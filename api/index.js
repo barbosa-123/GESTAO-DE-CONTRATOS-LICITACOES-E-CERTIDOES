@@ -2238,7 +2238,11 @@ export default async function handler(req, res) {
     }
 
     const slug = req.query?.path || req.query?.slug
-    const apiPath = Array.isArray(slug) ? slug.join('/') : (slug || '')
+    let apiPath = Array.isArray(slug) ? slug.join('/') : (slug || '')
+    if (!apiPath && req.url) {
+      const match = req.url.match(/^\/api\/(.+?)(?:\?|$)/)
+      if (match) apiPath = match[1]
+    }
 
     const event = {
       path: '/api/' + apiPath,
