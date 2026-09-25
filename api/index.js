@@ -2239,13 +2239,17 @@ export default async function handler(req, res) {
 
     const slug = req.query?.path || req.query?.slug
     let apiPath = Array.isArray(slug) ? slug.join('/') : (slug || '')
+
     if (!apiPath && req.url) {
-      const match = req.url.match(/^\/api\/(.+?)(?:\?|$)/)
-      if (match) apiPath = match[1]
+      const urlPath = req.url.split('?')[0]
+      const cleaned = urlPath.replace(/^\/api\//, '').replace(/^\/+/, '')
+      if (cleaned && !cleaned.includes('.')) apiPath = cleaned
     }
 
+    console.log('[VERCEL] slug:', slug, 'apiPath:', apiPath, 'url:', req.url, 'query:', JSON.stringify(req.query))
+
     const event = {
-      path: '/api/' + apiPath,
+      path: '/api/' + (apiPath || ''),
       httpMethod: req.method,
       headers: req.headers,
       body: rawBody || null,
