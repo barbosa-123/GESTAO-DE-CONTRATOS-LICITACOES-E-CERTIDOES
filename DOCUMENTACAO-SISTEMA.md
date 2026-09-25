@@ -1,4 +1,4 @@
-# DOCUMENTACAO TECNICA - CONTROLE DE CONTRATOS E PAGAMENTOS
+# DOCUMENTACAO TECNICA - GESTAO DE CONTRATOS LICITACOES
 
 **Versao:** 1.0.0
 **Stack:** SPA (index.html) + API Serverless (api/index.js) + Supabase (PostgreSQL)
@@ -82,6 +82,7 @@ users ──────────┬─────────────�
 
 certidoes (independente)
 licitacoes (independente)
+tipos_certidao (catalogo de tipos de certidao)
 destinatarios (independente)
 email_config (singleton, id=1)
 sync_log (log de auditoria)
@@ -171,6 +172,16 @@ sync_log (log de auditoria)
 #### `sectors` / `user_setores`
 Setores organizacionais e vinculo com usuarios (N:N).
 
+#### `tipos_certidao`
+Catalogo de tipos de certidao para o formulario de cadastro.
+
+| Coluna | Tipo | Descricao |
+|--------|------|-----------|
+| id | TEXT PK | UUID |
+| nome | TEXT | Nome do tipo de certidao |
+| active | INTEGER DEFAULT 1 | Status (1=ativo, 0=inativo) |
+| criado_em | TEXT | Data de criacao |
+
 #### `destinatarios`
 Destinatarios de alertas por email. Campos `empresa_ids`, `setores`, `alertas` como JSON.
 
@@ -235,6 +246,10 @@ Tabelas com `active`:
 | `/api/sectors` | POST | Admin Global | Sim | Cria setor |
 | `/api/sectors/:id` | PUT | Admin Global | Sim | Atualiza setor |
 | `/api/sectors/:id` | DELETE | Admin Global | Sim | Deleta setor |
+| `/api/tipos-certidao` | GET | Sim | Nao | Lista tipos de certidao |
+| `/api/tipos-certidao` | POST | Sim | Sim | Cria tipo de certidao |
+| `/api/tipos-certidao/:id` | PUT | Sim | Sim | Atualiza tipo de certidao |
+| `/api/tipos-certidao/:id` | DELETE | Sim | Sim | Deleta tipo de certidao |
 | `/api/user-setores` | GET | Sim | Nao | Setores do usuario logado |
 | `/api/user-setores` | POST | Admin | Sim | Atribui setores a usuario |
 | `/api/user-empresas` | GET | Sim | Nao | Empresas do usuario logado |

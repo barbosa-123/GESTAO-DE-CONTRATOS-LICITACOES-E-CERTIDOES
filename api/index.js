@@ -37,7 +37,7 @@ function getSupabase() {
 
 // ─── HELPERS ───────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT_ASSISTENTE = `Voce e o Assistente Virtual do sistema CONTROLE DE CONTRATOS E PAGAMENTOS da Ideal Alimentacao.
+const SYSTEM_PROMPT_ASSISTENTE = `Voce e o Assistente Virtual do sistema GESTAO DE CONTRATOS LICITACOES.
 Seu papel e ajudar o usuario a entender e usar o sistema. Responda SEMPRE em portugues brasileiro, de forma simples e direta.
 SOBRE O SISTEMA: Aplicacao web para gerenciar contratos, pagamentos e vencimentos de empresas.
 TELAS: 1) Dashboard - resumo com cards e vencimentos. 2) Contratos - lista e gerenciamento. 3) Novo Contrato - formulario de cadastro. 4) Pagamentos - lista de parcelas. 5) Configuracao - Usuarios, Empresas, Tipos, Destinatarios, E-mail.
@@ -1102,6 +1102,67 @@ async function vercelHandler(event) {
       return json({ ok: true })
     }
 
+    // ─── CERTIFICADOS DIGITAIS ──────────────────────────────────────────
+    if (route === 'certificados-digitais' && httpMethod === 'GET') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const empresaId = (body && body.empresa_id) || null
+      let q = getSupabase().from('certificados_digitais').select('*').is('deleted_at', null).order('criado_em', { ascending: false })
+      if (empresaId) q = q.eq('empresa_id', empresaId)
+      const { data } = await q
+      return json(data || [])
+    }
+
+    if (route === 'certificados-digitais' && httpMethod === 'POST') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      if (!validateCsrf(user, body.csrf_token)) return json({ ok: false, erro: 'CSRF invalido' }, 403)
+      const cid = body.id || crypto.randomUUID()
+      const empresa_id = (body.empresa_id || '').trim()
+      const nome = (body.nome || '').trim()
+      if (!empresa_id || !nome) return json({ ok: false, erro: 'empresa_id e nome sao obrigatorios' }, 400)
+      const tipo = (body.tipo || 'e-CNPJ').trim()
+      const titular = (body.titular || '').trim()
+      const arquivo_nome = (body.arquivo_nome || '').trim()
+      const arquivo_base64 = (body.arquivo_base64 || '')
+      const data_vencimento = (body.data_vencimento || '').trim()
+      const { data: existing } = await getSupabase().from('certificados_digitais').select('id').eq('id', cid).single()
+      if (existing) {
+        const upd = { empresa_id, nome, tipo, titular, data_vencimento, updated_at: new Date().toISOString() }
+        if (arquivo_nome) upd.arquivo_nome = arquivo_nome
+        if (arquivo_base64) upd.arquivo_base64 = arquivo_base64
+        await getSupabase().from('certificados_digitais').update(upd).eq('id', cid)
+      } else {
+        await getSupabase().from('certificados_digitais').insert({ id: cid, empresa_id, nome, tipo, titular, arquivo_nome, arquivo_base64, data_vencimento })
+      }
+      return json({ ok: true, id: cid })
+    }
+
+    if (parts[0] === 'certificados-digitais' && parts[1] && httpMethod === 'PUT') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      if (!validateCsrf(user, body.csrf_token)) return json({ ok: false, erro: 'CSRF invalido' }, 403)
+      const upd = {}
+      if (body.nome !== undefined) upd.nome = (body.nome || '').trim()
+      if (body.tipo !== undefined) upd.tipo = (body.tipo || '').trim()
+      if (body.titular !== undefined) upd.titular = (body.titular || '').trim()
+      if (body.data_vencimento !== undefined) upd.data_vencimento = (body.data_vencimento || '').trim()
+      if (body.empresa_id !== undefined) upd.empresa_id = (body.empresa_id || '').trim()
+      if (body.arquivo_nome !== undefined) upd.arquivo_nome = (body.arquivo_nome || '').trim()
+      if (body.arquivo_base64 !== undefined) upd.arquivo_base64 = body.arquivo_base64
+      upd.updated_at = new Date().toISOString()
+      await getSupabase().from('certificados_digitais').update(upd).eq('id', parts[1])
+      return json({ ok: true })
+    }
+
+    if (parts[0] === 'certificados-digitais' && parts[1] && httpMethod === 'DELETE') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      if (!validateCsrf(user, body.csrf_token)) return json({ ok: false, erro: 'CSRF invalido' }, 403)
+      await getSupabase().from('certificados_digitais').update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', parts[1])
+      return json({ ok: true })
+    }
+
     // ─── SECTORS ────────────────────────────────────────────────────────
     if (route === 'sectors' && httpMethod === 'GET') {
       const authErr = requireAuth(user)
@@ -1156,6 +1217,56 @@ async function vercelHandler(event) {
       }
       await getSupabase().from('sectors').delete().eq('id', parts[1])
       await getSupabase().from('user_setores').delete().eq('setor_id', parts[1])
+      return json({ ok: true })
+    }
+
+    // ─── TIPOS_CERTIDAO ────────────────────────────────────────────────
+    if (route === 'tipos-certidao' && httpMethod === 'GET') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const { data } = await getSupabase().from('tipos_certidao').select('*').order('nome')
+      return json(data || [])
+    }
+
+    if (route === 'tipos-certidao' && httpMethod === 'POST') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      if (!validateCsrf(user, body.csrf_token)) {
+        return json({ ok: false, erro: 'CSRF invalido' }, 403)
+      }
+      const tid = body.id || crypto.randomUUID()
+      const nome = (body.nome || '').trim()
+      if (!nome) return json({ ok: false, erro: 'Nome do tipo e obrigatorio' }, 400)
+      const active = body.active !== undefined ? (body.active ? 1 : 0) : 1
+      const { data: existing } = await getSupabase().from('tipos_certidao').select('id').eq('id', tid).single()
+      if (existing) {
+        await getSupabase().from('tipos_certidao').update({ nome, active }).eq('id', tid)
+      } else {
+        await getSupabase().from('tipos_certidao').insert({ id: tid, nome, active })
+      }
+      return json({ ok: true, id: tid })
+    }
+
+    if (parts[0] === 'tipos-certidao' && parts[1] && httpMethod === 'PUT') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      if (!validateCsrf(user, body.csrf_token)) {
+        return json({ ok: false, erro: 'CSRF invalido' }, 403)
+      }
+      const upd = {}
+      if (body.nome !== undefined) upd.nome = (body.nome || '').trim()
+      if (body.active !== undefined) upd.active = body.active ? 1 : 0
+      await getSupabase().from('tipos_certidao').update(upd).eq('id', parts[1])
+      return json({ ok: true })
+    }
+
+    if (parts[0] === 'tipos-certidao' && parts[1] && httpMethod === 'DELETE') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      if (!validateCsrf(user, body.csrf_token)) {
+        return json({ ok: false, erro: 'CSRF invalido' }, 403)
+      }
+      await getSupabase().from('tipos_certidao').delete().eq('id', parts[1])
       return json({ ok: true })
     }
 
@@ -1486,7 +1597,7 @@ async function vercelHandler(event) {
         const PAYMENT_COLS = 'id,contract_id,descricao,vencimento,valor,contrato_num,data_pagamento,valor_pago,forma_pagamento,status,obs,created_by,paid_by,created_at,updated_at,deleted_at,comprovante'
         const ADDITIVE_COLS = 'id,contract_id,numero,data_aditivo,tipo,nova_data_fim,acrescimo_valor,descricao,created_by,created_at,updated_at,deleted_at,arquivo_contrato'
         const CERTIDAO_COLS = 'id,empresa_id,cnpj,uf,cidade,tipo,data_emissao,data_validade,status,arquivo_nome,arquivo_dados,observacoes,criado_em,updated_at,deleted_at'
-        const LICITACAO_COLS = 'id,empresa_id,numero_licitacao,edital,nome_licitacao,cnpj,objeto,contrato_id,valor,data_homologacao,data_inicio,data_fim,status,observacoes,criado_em,updated_at,deleted_at'
+        const LICITACAO_COLS = 'id,empresa_id,numero_licitacao,edital,nome_licitacao,cnpj,objeto,contrato_id,valor,data_homologacao,data_inicio,data_fim,status,arquivos,observacoes,criado_em,updated_at,deleted_at'
         const DEST_COLS = 'id,email,nome,empresa_ids,setores,alertas,criado_em,updated_at,deleted_at'
         const sq = (tbl, cols) => {
           let q = getSupabase().from(tbl).select(cols)
@@ -1519,6 +1630,8 @@ async function vercelHandler(event) {
           ['licitacoes', () => sq('licitacoes', LICITACAO_COLS).order('criado_em', { ascending: false })],
           ['sectors', () => getSupabase().from('sectors').select('*').order('nome')],
           ['user_setores', () => getSupabase().from('user_setores').select('*')],
+          ['tipos_certidao', () => getSupabase().from('tipos_certidao').select('*').order('nome')],
+          ['certificados_digitais', () => sq('certificados_digitais', 'id,empresa_id,nome,tipo,titular,arquivo_nome,data_vencimento,criado_em,updated_at,deleted_at').order('criado_em', { ascending: false })],
         ]
         const results = []
         for (const [label, fn] of queries) {
@@ -1528,10 +1641,12 @@ async function vercelHandler(event) {
           results.push(r)
         }
         console.log('[SYNC-GET] Total queries:', Date.now() - t0, 'ms')
-        const [contratos, pagamentos, usuarios, aditivos, empresas, destinatarios, certidoes, licitacoes, sectors, userSetores] = results
+        const [contratos, pagamentos, usuarios, aditivos, empresas, destinatarios, certidoes, licitacoes, sectors, userSetores, tiposCertidao, certificadosDigitais] = results
         const resp = {
           contratos, pagamentos, usuarios, aditivos, empresas,
           destinatarios, certidoes, licitacoes, sectors, user_setores: userSetores,
+          tipos_certidao: tiposCertidao,
+          certificados_digitais: certificadosDigitais,
           server_now: new Date().toISOString()
         }
         const respSize = Math.round(JSON.stringify(resp).length / 1024)
@@ -2013,6 +2128,8 @@ async function vercelHandler(event) {
       if (!numero || !objeto) return json({ ok: false, erro: 'Numero da licitacao e objeto sao obrigatorios.' }, 400)
       const { error } = await getSupabase().from('licitacoes').insert({
         id: lid, numero_licitacao: numero, edital: (body.edital || '').trim(),
+        nome_licitacao: (body.nome_licitacao || '').trim(),
+        cnpj: (body.cnpj || '').trim(),
         objeto, empresa_id: body.empresa_id || '',
         contrato_id: body.contrato_id || '', valor: safeFloat(body.valor),
         data_homologacao: body.data_homologacao || '',
@@ -2035,6 +2152,8 @@ async function vercelHandler(event) {
       const upd = { updated_at: new Date().toISOString() }
       if (body.numero_licitacao !== undefined) upd.numero_licitacao = body.numero_licitacao
       if (body.edital !== undefined) upd.edital = body.edital
+      if (body.nome_licitacao !== undefined) upd.nome_licitacao = body.nome_licitacao
+      if (body.cnpj !== undefined) upd.cnpj = body.cnpj
       if (body.objeto !== undefined) upd.objeto = body.objeto
       if (body.empresa_id !== undefined) upd.empresa_id = body.empresa_id
       if (body.contrato_id !== undefined) upd.contrato_id = body.contrato_id

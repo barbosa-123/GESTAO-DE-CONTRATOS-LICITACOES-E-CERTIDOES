@@ -1,25 +1,27 @@
 {
-  "buildCommand": "npm install",
-  "outputDirectory": ".",
-  "framework": null,
-  "crons": [
+  "version": 2,
+  "builds": [
     {
-      "path": "/api/email-diario",
-      "schedule": "0 13 * * *"
+      "src": "api/index.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "api/email-diario.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "index.html",
+      "use": "@vercel/static"
     }
   ],
-  "headers": [
+  "routes": [
     {
-      "source": "/(.*)",
-      "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "X-Frame-Options", "value": "DENY" },
-        { "key": "X-XSS-Protection", "value": "1; mode=block" },
-        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://*.supabase.co wss://*.supabase.co" }
-      ]
+      "src": "/api/(.*)",
+      "dest": "/api/index.js"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
-  ],
-  "rewrites": [
-    { "source": "/api/:path*", "destination": "/api/index" }
   ]
 }

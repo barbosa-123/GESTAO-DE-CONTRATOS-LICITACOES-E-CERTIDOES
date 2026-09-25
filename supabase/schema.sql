@@ -191,6 +191,14 @@ CREATE TABLE IF NOT EXISTS licitacoes (
   deleted_at TEXT
 );
 
+-- Tipos de Certidao (catalogo gerenciavel)
+CREATE TABLE IF NOT EXISTS tipos_certidao (
+  id TEXT PRIMARY KEY,
+  nome TEXT NOT NULL,
+  active INTEGER NOT NULL DEFAULT 1,
+  criado_em TEXT NOT NULL DEFAULT (now()::text)
+);
+
 -- User-Empresas (vinculo usuario-empresa)
 CREATE TABLE IF NOT EXISTS user_empresas (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

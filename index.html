@@ -1,9 +1,9 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Controle de Contratos - Local</title>
+  <title>Gestão de Contratos Licitações</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -788,6 +788,7 @@
     .pg-select { background:var(--card-bg,#fff); border:1px solid var(--border,#ddd); border-radius:6px; padding:5px 8px; font-size:0.82rem; color:var(--text,#333); cursor:pointer; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -853,7 +854,7 @@
     <line x1="11" y1="11" x2="18" y2="11" stroke="#1a3c5e" stroke-width="1.5" stroke-linecap="round"/>
     <line x1="11" y1="14" x2="15" y2="14" stroke="#1a3c5e" stroke-width="1.5" stroke-linecap="round"/>
   </svg>
-  <h1>Controle de Contratos e Pagamentos</h1>
+  <h1>Gestão de Contratos Licitações</h1>
   <span id="header-user" style="margin-left:auto; color:#cde; font-size:0.85rem;"></span>
   <span id="sync-indicator" style="margin-left:8px; font-size:0.75rem; color:#8f8; display:none;">● Sincronizado</span>
   <div id="notif-bell" style="position:relative;cursor:pointer;margin-left:12px;" onclick="toggleNotificacoes()" title="Notificações">
@@ -872,13 +873,14 @@
   <button class="active" onclick="showPage('dashboard',this)">Dashboard</button>
   <button onclick="showPage('certidoes',this)">Certidões</button>
   <button onclick="showPage('licitacoes',this)">Contrato Licitações</button>
+  <button onclick="showPage('certificados-digitais',this)">Certificados Digitais</button>
   <div class="nav-dropdown">
     <button class="dropdown-btn" onclick="toggleConfigDropdown(event)">Configuração ▾</button>
     <div class="dropdown-content" id="config-dropdown">
       <a onclick="showConfigSub('minha-conta')">Minha Conta</a>
       <a id="drop-usuarios" onclick="showConfigSub('usuarios')">Usuários</a>
       <a onclick="showConfigSub('empresas')">Empresas</a>
-      <a onclick="showConfigSub('tipos')">Tipos de Serviço</a>
+      <a onclick="showConfigSub('certificados-digitais')">Certificados Digitais</a>
       <a onclick="showConfigSub('email')">E-mail</a>
       <a onclick="showConfigSub('sistema')">Informações do Sistema</a>
     </div>
@@ -890,30 +892,19 @@
   <!-- DASHBOARD -->
   <div id="page-dashboard" class="page active">
     <div class="summary-cards" id="summary-cards"></div>
-    <div class="card">
-      <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;align-items:end">
-        <div class="form-group" style="min-width:220px">
-          <label>FILTRAR POR FORNECEDOR / CNPJ / CPF</label>
-          <input type="text" id="filtro-dash-parte" placeholder="Nome ou CNPJ/CPF" oninput="dashVencPage=1;renderDashboard()"/>
-        </div>
-        <div class="form-group" style="min-width:160px">
-          <label>FILTRAR POR VENCIMENTO (ATE)</label>
-          <input type="date" id="filtro-dash-venc" onchange="dashVencPage=1;renderDashboard()"/>
-        </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;margin-top:16px;">
+      <div class="card" style="padding:20px;">
+        <h3 style="margin-bottom:12px;">Certidões por Status</h3>
+        <div style="position:relative;height:260px;"><canvas id="chart-cert-status"></canvas></div>
       </div>
-      <h2>Próximos Vencimentos</h2>
-      <div style="overflow-x:auto">
-        <table>
-          <thead>
-            <tr>
-              <th>Contrato</th><th>Empresa</th><th>Fornecedor/Cliente</th><th>Parcela</th>
-              <th>Vencimento</th><th>Valor</th><th>Status</th>
-            </tr>
-          </thead>
-          <tbody id="tb-vencimentos"></tbody>
-        </table>
+      <div class="card" style="padding:20px;">
+        <h3 style="margin-bottom:12px;">Licitações por Status</h3>
+        <div style="position:relative;height:260px;"><canvas id="chart-lic-status"></canvas></div>
       </div>
-      <div id="dash-venc-pagination" class="pagination-controls"></div>
+      <div class="card" style="padding:20px;">
+        <h3 style="margin-bottom:12px;">Certidões — Vencimento nos Próximos 6 Meses</h3>
+        <div style="position:relative;height:260px;"><canvas id="chart-cert-venc"></canvas></div>
+      </div>
     </div>
   </div>
 
@@ -956,7 +947,7 @@
       <div style="overflow-x:auto">
         <table>
           <thead>
-            <tr>
+            <tr id="cert-header-row">
               <th>Empresa</th><th>CNPJ</th><th>UF</th><th>Cidade</th><th>Tipo</th><th>Emissão</th><th>Validade</th>
               <th>Status</th><th>Anexo</th><th>Ações</th>
             </tr>
@@ -998,7 +989,7 @@
       <div style="overflow-x:auto">
         <table>
           <thead>
-            <tr>
+            <tr id="lc-header-row">
               <th>Nº Licitação</th><th>Nome</th><th>CNPJ</th><th>Empresa</th><th>Objeto</th>
               <th>Valor do Contrato</th><th>Vigência</th><th>Status</th><th>Anexo</th><th>Ações</th>
             </tr>
@@ -1007,6 +998,34 @@
         </table>
       </div>
       <div id="lc-pagination"></div>
+    </div>
+  </div>
+
+  <!-- CERTIFICADOS DIGITAIS - Pagina Principal -->
+  <div id="page-certificados-digitais" class="page">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <h2>Certificados Digitais</h2>
+        <button class="btn btn-primary" onclick="abrirModalCertificado()">+ Novo Certificado</button>
+      </div>
+      <div style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; align-items:flex-end;">
+        <div class="form-group" style="min-width:220px;">
+          <label>Filtrar por Empresa</label>
+          <select id="pg-cd-empresa-filtro" onchange="renderPgCertificadosDigitais()">
+            <option value="">Todas</option>
+          </select>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th><th>Nome</th><th>Tipo</th><th>Titular</th><th>Empresa</th><th>Vencimento</th><th>Arquivo</th><th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tb-pg-certificados-digitais"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -1230,8 +1249,9 @@
         <button id="subnav-minha-conta" onclick="showConfigSub('minha-conta')">Minha Conta</button>
         <button id="subnav-usuarios" class="active" onclick="showConfigSub('usuarios')">Usuários</button>
         <button onclick="showConfigSub('empresas')">Empresas</button>
+        <button onclick="showConfigSub('certificados-digitais')">Certificados Digitais</button>
         <button onclick="showConfigSub('setores')">Setores</button>
-        <button onclick="showConfigSub('tipos')">Tipos de Serviço</button>
+        <button onclick="showConfigSub('tipos')">Tipos Certidão</button>
         <button onclick="showConfigSub('destinatarios')">Destinatários</button>
         <button onclick="showConfigSub('email')">E-mail</button>
         <button onclick="showConfigSub('historico')">Histórico</button>
@@ -1319,6 +1339,78 @@
       </div>
     </div>
 
+    <!-- CERTIFICADOS DIGITAIS -->
+    <div id="config-sub-certificados-digitais" class="config-section">
+      <div class="card">
+        <h2>Certificados Digitais</h2>
+        <p style="margin-bottom:16px;color:#666;font-size:0.9rem;">Gerencie os certificados digitais (.pfx/.p12) vinculados as empresas.</p>
+        <div style="display:flex;gap:8px;margin-bottom:16px;align-items:end;flex-wrap:wrap;">
+          <div class="form-group" style="flex:1;min-width:200px;">
+            <label>Filtrar por Empresa</label>
+            <select id="cd-empresa-filtro" onchange="renderCertificadosDigitais()">
+              <option value="">Todas</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" onclick="abrirModalCertificado()">+ Novo Certificado</button>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr><th>#</th><th>Nome</th><th>Tipo</th><th>Titular</th><th>Empresa</th><th>Vencimento</th><th>Arquivo</th><th>Ações</th></tr>
+            </thead>
+            <tbody id="tb-certificados-digitais"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL CERTIFICADO DIGITAL -->
+    <div id="modal-certificado" class="modal" style="display:none;">
+      <div class="modal-content" style="max-width:550px;">
+        <div class="modal-header">
+          <h3 id="mc-titulo">Novo Certificado Digital</h3>
+          <span class="close" onclick="fecharModal('modal-certificado')">&times;</span>
+        </div>
+        <div class="form-grid">
+          <input type="hidden" id="mc-id"/>
+          <div class="form-group">
+            <label>Empresa *</label>
+            <select id="mc-empresa">
+              <option value="">Selecione...</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Nome/Rotulo *</label>
+            <input type="text" id="mc-nome" placeholder="Ex: e-CNPJ Validade 2027"/>
+          </div>
+          <div class="form-group">
+            <label>Tipo *</label>
+            <select id="mc-tipo">
+              <option value="e-CNPJ">e-CNPJ</option>
+              <option value="e-CPF">e-CPF</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Titular</label>
+            <input type="text" id="mc-titular" placeholder="Nome do titular"/>
+          </div>
+          <div class="form-group">
+            <label>Data de Vencimento</label>
+            <input type="date" id="mc-vencimento"/>
+          </div>
+          <div class="form-group full">
+            <label>Arquivo do Certificado (.pfx/.p12)</label>
+            <input type="file" id="mc-arquivo" accept=".pfx,.p12" style="background:#fff;padding:6px;cursor:pointer;"/>
+            <span id="mc-arquivo-info" style="font-size:0.8rem;color:#666;margin-top:4px;display:none;"></span>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="salvarCertificado()">Salvar</button>
+          <button class="btn" style="background:#e8eef4;color:#333;" onclick="fecharModal('modal-certificado')">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
     <!-- SETORES -->
     <div id="config-sub-setores" class="config-section">
       <div class="card">
@@ -1342,22 +1434,22 @@
       </div>
     </div>
 
-    <!-- TIPOS DE SERVICO -->
+    <!-- TIPOS DE CERTIDAO -->
     <div id="config-sub-tipos" class="config-section">
       <div class="card">
-        <h2>Tipos de Serviço</h2>
-        <p style="margin-bottom:16px;color:#666;font-size:0.9rem;">Cadastre os tipos de serviço que aparecerão no formulário de Novo Contrato.</p>
+        <h2>Tipos de Certidão</h2>
+        <p style="margin-bottom:16px;color:#666;font-size:0.9rem;">Cadastre os tipos de certidão que aparecerão no formulário de Nova Certidão.</p>
         <div style="display:flex;gap:8px;margin-bottom:16px;align-items:end;">
           <div class="form-group" style="flex:1;">
             <label>Novo Tipo</label>
-            <input type="text" id="novo-tipo-input" placeholder="Ex: Serviço de TI" onkeydown="if(event.key==='Enter')adicionarTipo()" oninput="toUpper(this)"/>
+            <input type="text" id="novo-tipo-input" placeholder="Ex: CND Federal" onkeydown="if(event.key==='Enter')salvarTipo()" oninput="toUpper(this)"/>
           </div>
-          <button class="btn btn-primary" onclick="adicionarTipo()">Adicionar</button>
+          <button id="btn-salvar-tipo" class="btn btn-primary" onclick="salvarTipo()">Adicionar</button>
         </div>
         <div style="overflow-x:auto">
           <table>
             <thead>
-              <tr><th>#</th><th>Tipo de Serviço</th><th>Ações</th></tr>
+              <tr><th>#</th><th>Tipo de Certidão</th><th>Ações</th></tr>
             </thead>
             <tbody id="tb-tipos"></tbody>
           </table>
@@ -1925,7 +2017,9 @@ function checkLogin() {
   }
 }
 
+let currentUser = null;
 function mostrarApp(user) {
+  currentUser = user;
   document.getElementById('login-content').style.display = 'none';
   document.getElementById('app-content').style.display = 'block';
   document.getElementById('header-user').textContent = user.full_name ? (user.full_name + ' (' + user.username + ')') : '';
@@ -1951,11 +2045,9 @@ function mostrarApp(user) {
   const isSetorAdmin = user.role === 'setor_admin';
   if (isSetorAdmin) {
     const ddEmpresas = document.querySelector('#config-dropdown a[onclick*="empresas"]');
-    const ddTipos = document.querySelector('#config-dropdown a[onclick*="tipos"]');
     const ddEmail = document.querySelector('#config-dropdown a[onclick*="email"]');
     const ddSistema = document.querySelector('#config-dropdown a[onclick*="sistema"]');
     if (ddEmpresas) ddEmpresas.style.display = 'none';
-    if (ddTipos) ddTipos.style.display = 'none';
     if (ddEmail) ddEmail.style.display = 'none';
     if (ddSistema) ddSistema.style.display = 'none';
   }
@@ -2053,6 +2145,7 @@ function doResetPassword() {
 // ===================== INDEXED DB =====================
 let db;
 let cachedTipos = [];
+let cachedTiposCertidao = [];
 let cachedEmpresas = [];
 let cachedUserEmpresas = [];
 let cachedDestinatarios = [];
@@ -2060,12 +2153,14 @@ let cachedSectors = [];
 let cachedUserSetores = [];
 let cachedCertidoes = [];
 let cachedLicitacoes = [];
+let cachedCertificadosDigitais = [];
 
-const requestDB = indexedDB.open("ControleContratos", 7);
+const requestDB = indexedDB.open("ControleContratos", 8);
 requestDB.onupgradeneeded = (e) => {
   db = e.target.result;
   console.log('IndexedDB: upgrade needed, version', e.oldVersion, '->', e.newVersion);
   if (!db.objectStoreNames.contains("tipos")) { db.createObjectStore("tipos", { keyPath: "id" }); console.log('Created store: tipos'); }
+  if (!db.objectStoreNames.contains("tipos_certidao")) { db.createObjectStore("tipos_certidao", { keyPath: "id" }); console.log('Created store: tipos_certidao'); }
   if (!db.objectStoreNames.contains("empresas")) { db.createObjectStore("empresas", { keyPath: "id" }); console.log('Created store: empresas'); }
   if (!db.objectStoreNames.contains("user_empresas")) { db.createObjectStore("user_empresas", { keyPath: "userId" }); console.log('Created store: user_empresas'); }
   if (!db.objectStoreNames.contains("destinatarios")) { db.createObjectStore("destinatarios", { keyPath: "id" }); console.log('Created store: destinatarios'); }
@@ -2073,6 +2168,7 @@ requestDB.onupgradeneeded = (e) => {
   if (!db.objectStoreNames.contains("user_setores")) { db.createObjectStore("user_setores", { keyPath: "userId" }); console.log('Created store: user_setores'); }
   if (!db.objectStoreNames.contains("certidoes")) { db.createObjectStore("certidoes", { keyPath: "id" }); console.log('Created store: certidoes'); }
   if (!db.objectStoreNames.contains("licitacoes")) { db.createObjectStore("licitacoes", { keyPath: "id" }); console.log('Created store: licitacoes'); }
+  if (!db.objectStoreNames.contains("certificados_digitais")) { db.createObjectStore("certificados_digitais", { keyPath: "id" }); console.log('Created store: certificados_digitais'); }
   console.log('Stores after upgrade:', Array.from(db.objectStoreNames));
 };
 requestDB.onerror = (e) => {
@@ -2130,8 +2226,8 @@ function loadDataFromDB() {
     }
   }
 
-  carregar(["tipos", "empresas", "user_empresas", "destinatarios", "sectors", "user_setores", "certidoes", "licitacoes"], (r2) => {
-      console.log('Loaded tipos:', r2.tipos?.length, 'empresas:', r2.empresas?.length, 'user_empresas:', r2.user_empresas?.length, 'sectors:', r2.sectors?.length, 'user_setores:', r2.user_setores?.length);
+  carregar(["tipos", "tipos_certidao", "empresas", "user_empresas", "destinatarios", "sectors", "user_setores", "certidoes", "licitacoes", "certificados_digitais"], (r2) => {
+      console.log('Loaded tipos:', r2.tipos?.length, 'tipos_certidao:', r2.tipos_certidao?.length, 'empresas:', r2.empresas?.length, 'user_empresas:', r2.user_empresas?.length, 'sectors:', r2.sectors?.length, 'user_setores:', r2.user_setores?.length, 'certificados_digitais:', r2.certificados_digitais?.length);
       cachedTipos = r2.tipos || [];
       // Deduplica tipos por nome (corrige duplicatas de upgrades anteriores)
       const seen = new Set();
@@ -2154,6 +2250,35 @@ function loadDataFromDB() {
       cachedUserSetores = r2.user_setores || [];
       cachedCertidoes = r2.certidoes || [];
       cachedLicitacoes = r2.licitacoes || [];
+      cachedTiposCertidao = r2.tipos_certidao || [];
+      cachedCertificadosDigitais = r2.certificados_digitais || [];
+
+      if (cachedTiposCertidao.length === 0) {
+        try {
+          const defaults = [
+            'Cartão CNPJ Ativo (Receita Federal)',
+            'Inscrição Municipal',
+            'CND Federal',
+            'CND Estadual',
+            'CND Municipal',
+            'CNDT (Trabalhista)',
+            'CRF (FGTS)',
+            'Prova de Regularidade c/ Seguridade Social',
+            'Atestado de Capacidade c/ Seguridade Social',
+            'Atestado de Capacidade Técnica Profissional (CRN)',
+            'Inscrição Entidade Profissional (CRN)',
+            'Alvará de Funcionamento',
+            'AVCB (Corpo de Bombeiros)',
+            'Alvará Sanitário',
+            'Outros'
+          ];
+          const seed = defaults.map(nome => ({ id: uid(), nome, active: 1, criadoEm: new Date().toISOString() }));
+          cachedTiposCertidao = seed;
+          console.log('Seed de tipos_certidao criado localmente');
+        } catch(e) {
+          console.warn('Erro ao criar seed de tipos_certidao:', e);
+        }
+      }
 
       if (cachedTipos.length === 0) {
         try {
@@ -2169,7 +2294,24 @@ function loadDataFromDB() {
       }
 
       showPage('dashboard', document.querySelector('nav button'));
-      loadFromServer().then(() => syncToServer()).catch(e => console.error('[SYNC] Erro no sync inicial:', e));
+      if (SYNC_ENABLED) loadFromServer().then(() => syncToServer()).catch(e => console.error('[SYNC] Erro no sync inicial:', e));
+
+      apiCall('GET', 'licitacoes').then(r => {
+        console.log('[DEBUG-LC] API licitacoes response:', r);
+        if (r && Array.isArray(r)) {
+          r.forEach(serverLc => {
+            console.log('[DEBUG-LC] id:', serverLc.id, 'arquivos:', serverLc.arquivos);
+            const idx = cachedLicitacoes.findIndex(l => l.id === serverLc.id);
+            if (idx !== -1 && serverLc.arquivos) {
+              let arq = serverLc.arquivos;
+              if (typeof arq === 'string') { try { arq = JSON.parse(arq); } catch(e) { arq = []; } }
+              if (Array.isArray(arq) && arq.length > 0) cachedLicitacoes[idx].arquivos = arq;
+            }
+          });
+          saveLicitacoes(cachedLicitacoes);
+          renderLicitacoes();
+        }
+      }).catch(e => console.log('[DEBUG-LC] ERRO:', e));
     });
 }
 
@@ -2293,8 +2435,21 @@ function saveCertidoes(arr) {
 }
 
 // ===================== LICITACOES =====================
-function getLicitacoes() { return cachedLicitacoes.filter(l => !l.deleted_at); }
+function getLicitacoes() {
+  return cachedLicitacoes.filter(l => {
+    if (l.deleted_at) return false;
+    if (!Array.isArray(l.arquivos)) {
+      try { l.arquivos = typeof l.arquivos === 'string' ? JSON.parse(l.arquivos) : []; } catch(e) { l.arquivos = []; }
+    }
+    return true;
+  });
+}
 function saveLicitacoes(arr) {
+  arr.forEach(l => {
+    if (!Array.isArray(l.arquivos)) {
+      try { l.arquivos = typeof l.arquivos === 'string' ? JSON.parse(l.arquivos) : []; } catch(e) { l.arquivos = []; }
+    }
+  });
   cachedLicitacoes = arr;
   try {
     if (!db) return;
@@ -2302,6 +2457,25 @@ function saveLicitacoes(arr) {
     t.objectStore("licitacoes").clear();
     arr.forEach(a => t.objectStore("licitacoes").put(a));
   } catch (e) { console.error('[DB] saveLicitacoes erro:', e.message); }
+}
+
+// ===================== CERTIFICADOS DIGITAIS =====================
+function getCertificadosDigitais(empresaId) {
+  return cachedCertificadosDigitais.filter(c => {
+    if (c.deleted_at) return false;
+    if (empresaId && c.empresa_id !== empresaId) return false;
+    return true;
+  });
+}
+function getAllCertificadosDigitais() { return cachedCertificadosDigitais.filter(c => !c.deleted_at); }
+function saveCertificadosDigitais(arr) {
+  cachedCertificadosDigitais = arr;
+  try {
+    if (!db) return;
+    const t = db.transaction("certificados_digitais", "readwrite");
+    t.objectStore("certificados_digitais").clear();
+    arr.forEach(a => t.objectStore("certificados_digitais").put(a));
+  } catch (e) { console.error('[DB] saveCertificadosDigitais erro:', e.message); }
 }
 
 function popularTipoSelect() {
@@ -2330,59 +2504,105 @@ function popularSetorSelect() {
   if (atual) sel.value = atual;
 }
 
+let _editandoTipoId = null;
+
+function getTiposCertidao() { return cachedTiposCertidao; }
+function saveTiposCertidao(arr) {
+  cachedTiposCertidao = arr;
+  try {
+    if (!db) return;
+    const t = db.transaction("tipos_certidao", "readwrite");
+    t.objectStore("tipos_certidao").clear();
+    arr.forEach(a => t.objectStore("tipos_certidao").put(a));
+  } catch (e) { console.error('[DB] saveTiposCertidao erro:', e.message); }
+}
+
 function renderTiposConfig() {
   const tb = document.getElementById('tb-tipos');
   if (!tb) return;
-  const tipos = getTipos();
+  const tipos = getTiposCertidao();
   if (!tipos.length) {
     tb.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#aaa;padding:32px">Nenhum tipo cadastrado.</td></tr>';
     return;
   }
   const _user = JSON.parse(sessionStorage.getItem('user') || '{}');
-  const isAdmin = _user.role === 'admin';
+  const canDelete = _user.role === 'admin' || _user.role === 'setor_admin';
   tb.innerHTML = tipos.map((t, i) => {
     const ativo = t.active !== 0;
     return `<tr${ativo ? '' : ' style="opacity:0.55"'}>
     <td>${i + 1}</td>
     <td>${escapeHtml(t.nome)} ${ativo ? '' : '<span class="badge badge-vencido">Inativo</span>'}</td>
     <td style="display:flex;gap:4px;">
-      <button class="btn btn-sm ${ativo ? 'btn-warning' : 'btn-secondary'}" onclick="inativarTipo('${t.id}')">${ativo ? 'Inativar' : 'Ativar'}</button>
-      ${isAdmin ? `<button class="btn btn-sm btn-danger" onclick="excluirTipo('${t.id}')">Excluir</button>` : ''}
+      <button class="btn btn-sm btn-primary" onclick="editarTipo('${t.id}')" style="padding:2px 8px;font-size:0.75rem;">Editar</button>
+      <button class="btn btn-sm ${ativo ? 'btn-warning' : 'btn-secondary'}" onclick="inativarTipo('${t.id}')" style="padding:2px 8px;font-size:0.75rem;">${ativo ? 'Inativar' : 'Ativar'}</button>
+      ${canDelete ? `<button class="btn btn-sm btn-danger" onclick="excluirTipo('${t.id}')" style="padding:2px 8px;font-size:0.75rem;">Excluir</button>` : ''}
     </td>
   </tr>`}).join('');
 }
 
-function adicionarTipo() {
+function limparFormTipo() {
+  _editandoTipoId = null;
+  const input = document.getElementById('novo-tipo-input');
+  if (input) input.value = '';
+  const btn = document.getElementById('btn-salvar-tipo');
+  if (btn) btn.textContent = 'Adicionar';
+}
+
+function editarTipo(id) {
+  const t = getTiposCertidao().find(x => x.id === id);
+  if (!t) return;
+  _editandoTipoId = id;
+  const input = document.getElementById('novo-tipo-input');
+  if (input) input.value = t.nome;
+  const btn = document.getElementById('btn-salvar-tipo');
+  if (btn) btn.textContent = 'Salvar';
+}
+
+function salvarTipo() {
   const input = document.getElementById('novo-tipo-input');
   const nome = input.value.trim();
-  if (!nome) { alert('Informe o nome do tipo.'); return; }
-  const tipos = getTipos();
-  if (tipos.find(t => t.nome.toLowerCase() === nome.toLowerCase())) {
-    alert('Este tipo já existe.'); return;
+  if (!nome) { mostrarToast('Informe o nome do tipo de certidão.', 'erro'); return; }
+  const tipos = getTiposCertidao();
+  const duplicata = tipos.find(t => t.nome.toLowerCase() === nome.toLowerCase() && t.id !== _editandoTipoId);
+  if (duplicata) { mostrarToast('Este tipo de certidão já existe.', 'erro'); return; }
+
+  if (_editandoTipoId) {
+    const idx = tipos.findIndex(t => t.id === _editandoTipoId);
+    if (idx !== -1) tipos[idx].nome = nome;
+    mostrarToast('Tipo de certidão atualizado com sucesso!', 'sucesso');
+  } else {
+    tipos.push({ id: uid(), nome, active: 1, criadoEm: new Date().toISOString() });
+    mostrarToast('Tipo de certidão cadastrado com sucesso!', 'sucesso');
   }
-  tipos.push({ id: uid(), nome, active: 1, criadoEm: new Date().toISOString() });
-  saveTipos(tipos);
-  input.value = '';
+
+  saveTiposCertidao(tipos);
+  limparFormTipo();
   renderTiposConfig();
-  popularTipoSelect();
+  popularModalCertidaoTipo();
+}
+
+function adicionarTipo() {
+  salvarTipo();
 }
 
 function excluirTipo(id) {
-  if (!confirm('Excluir este tipo de serviço?')) return;
-  const tipos = getTipos().filter(t => t.id !== id);
-  saveTipos(tipos);
+  if (!confirm('Excluir este tipo de certidão?')) return;
+  const tipos = getTiposCertidao().filter(t => t.id !== id);
+  saveTiposCertidao(tipos);
+  if (_editandoTipoId === id) limparFormTipo();
   renderTiposConfig();
-  popularTipoSelect();
+  popularModalCertidaoTipo();
+  mostrarToast('Tipo de certidão excluído com sucesso.', 'sucesso');
 }
 
 function inativarTipo(id) {
-  const tipos = getTipos();
+  const tipos = getTiposCertidao();
   const t = tipos.find(x => x.id === id);
   if (!t) return;
   t.active = t.active === 0 ? 1 : 0;
-  saveTipos(tipos);
+  saveTiposCertidao(tipos);
   renderTiposConfig();
-  popularTipoSelect();
+  popularModalCertidaoTipo();
   mostrarToast(`Tipo ${t.active ? 'ativado' : 'inativado'} com sucesso.`, 'sucesso');
 }
 
@@ -2579,7 +2799,7 @@ function renderEmpresasConfig() {
     return;
   }
   const _user = JSON.parse(sessionStorage.getItem('user') || '{}');
-  const isAdmin = _user.role === 'admin';
+  const isAdmin = _user.role === 'admin' || _user.role === 'setor_admin';
   tb.innerHTML = empresas.map((e, i) => {
     const ativo = e.active !== 0;
     return `<tr${ativo ? '' : ' style="opacity:0.55"'}>
@@ -2670,6 +2890,234 @@ function inativarEmpresa(id) {
   mostrarToast(`Empresa ${e.active ? 'ativada' : 'inativada'} com sucesso.`, 'sucesso');
 }
 
+// ===================== CERTIFICADOS DIGITAIS =====================
+let _editandoCertificadoId = null;
+
+function renderCertificadosDigitais() {
+  const tb = document.getElementById('tb-certificados-digitais');
+  if (!tb) return;
+  const empresaFilter = document.getElementById('cd-empresa-filtro')?.value || '';
+  const certificados = getCertificadosDigitais(empresaFilter || null);
+  const empresas = getEmpresas();
+  const _user = JSON.parse(sessionStorage.getItem('user') || '{}');
+  const isAdm = _user.role === 'admin';
+  if (!certificados.length) {
+    tb.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#aaa;padding:32px">Nenhum certificado encontrado.</td></tr>';
+    return;
+  }
+  tb.innerHTML = certificados.map((c, i) => {
+    const emp = empresas.find(e => e.id === c.empresa_id);
+    const venc = c.data_vencimento ? new Date(c.data_vencimento + 'T00:00:00') : null;
+    const hoje = new Date();
+    const diasRestantes = venc ? Math.ceil((venc - hoje) / (1000 * 60 * 60 * 24)) : null;
+    let vencBadge = '';
+    if (diasRestantes !== null) {
+      if (diasRestantes < 0) vencBadge = '<span class="badge badge-vencido">Vencido</span>';
+      else if (diasRestantes <= 30) vencBadge = '<span class="badge badge-alerta">Vence em ' + diasRestantes + 'd</span>';
+    }
+    return `<tr>
+    <td>${i + 1}</td>
+    <td>${escapeHtml(c.nome)}</td>
+    <td>${escapeHtml(c.tipo)}</td>
+    <td>${escapeHtml(c.titular || '—')}</td>
+    <td>${emp ? escapeHtml(emp.nome) : '—'}</td>
+    <td>${c.data_vencimento ? formatDate(c.data_vencimento) + ' ' + vencBadge : '—'}</td>
+    <td>${c.arquivo_nome ? '<span title="' + escapeHtml(c.arquivo_nome) + '" style="color:#007bff;cursor:default;">' + escapeHtml(c.arquivo_nome).substring(0, 20) + '</span>' : '—'}</td>
+    <td style="display:flex;gap:4px;">
+      <button class="btn btn-sm btn-primary" onclick="editarCertificado('${c.id}')" style="padding:2px 8px;font-size:0.75rem;">Editar</button>
+      ${isAdm ? `<button class="btn btn-sm btn-danger" onclick="excluirCertificado('${c.id}')" style="padding:2px 8px;font-size:0.75rem;">Excluir</button>` : ''}
+    </td>
+  </tr>`}).join('');
+}
+
+function popularEmpresaCertificadoSelect() {
+  const sel = document.getElementById('mc-empresa');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Selecione...</option>';
+  getEmpresas().filter(e => e.active !== 0).forEach(e => {
+    const opt = document.createElement('option');
+    opt.value = e.id; opt.textContent = e.nome;
+    sel.appendChild(opt);
+  });
+}
+
+function popularFiltroEmpresaCertificados() {
+  const sel = document.getElementById('cd-empresa-filtro');
+  if (!sel) return;
+  const atual = sel.value;
+  sel.innerHTML = '<option value="">Todas</option>';
+  getEmpresas().filter(e => e.active !== 0).forEach(e => {
+    const opt = document.createElement('option');
+    opt.value = e.id; opt.textContent = e.nome;
+    sel.appendChild(opt);
+  });
+  if (atual) sel.value = atual;
+}
+
+function abrirModalCertificado(certId) {
+  _editandoCertificadoId = certId || null;
+  document.getElementById('mc-id').value = certId || '';
+  document.getElementById('mc-nome').value = '';
+  document.getElementById('mc-tipo').value = 'e-CNPJ';
+  document.getElementById('mc-titular').value = '';
+  document.getElementById('mc-vencimento').value = '';
+  document.getElementById('mc-arquivo').value = '';
+  document.getElementById('mc-arquivo-info').style.display = 'none';
+  document.getElementById('mc-arquivo-info').textContent = '';
+  popularEmpresaCertificadoSelect();
+  if (certId) {
+    const c = cachedCertificadosDigitais.find(x => x.id === certId);
+    if (c) {
+      document.getElementById('mc-titulo').textContent = 'Editar Certificado Digital';
+      document.getElementById('mc-empresa').value = c.empresa_id;
+      document.getElementById('mc-nome').value = c.nome;
+      document.getElementById('mc-tipo').value = c.tipo;
+      document.getElementById('mc-titular').value = c.titular || '';
+      document.getElementById('mc-vencimento').value = c.data_vencimento || '';
+      if (c.arquivo_nome) {
+        document.getElementById('mc-arquivo-info').style.display = 'block';
+        document.getElementById('mc-arquivo-info').textContent = 'Arquivo atual: ' + c.arquivo_nome;
+      }
+    }
+  } else {
+    document.getElementById('mc-titulo').textContent = 'Novo Certificado Digital';
+  }
+  document.getElementById('modal-certificado').style.display = 'flex';
+}
+
+function editarCertificado(id) {
+  abrirModalCertificado(id);
+}
+
+async function salvarCertificado() {
+  const empresa_id = document.getElementById('mc-empresa').value;
+  const nome = document.getElementById('mc-nome').value.trim();
+  const tipo = document.getElementById('mc-tipo').value;
+  const titular = document.getElementById('mc-titular').value.trim();
+  const data_vencimento = document.getElementById('mc-vencimento').value;
+  const fileInput = document.getElementById('mc-arquivo');
+
+  if (!empresa_id) { mostrarToast('Selecione a empresa.', 'erro'); return; }
+  if (!nome) { mostrarToast('Informe o nome/rotulo do certificado.', 'erro'); return; }
+
+  let arquivo_nome = '';
+  let arquivo_base64 = '';
+
+  if (fileInput.files && fileInput.files[0]) {
+    const file = fileInput.files[0];
+    arquivo_nome = file.name;
+    arquivo_base64 = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1] || '');
+      reader.readAsDataURL(file);
+    });
+  } else if (_editandoCertificadoId) {
+    const existente = cachedCertificadosDigitais.find(c => c.id === _editandoCertificadoId);
+    arquivo_nome = existente?.arquivo_nome || '';
+    arquivo_base64 = existente?.arquivo_base64 || '';
+  }
+
+  const certificado = {
+    empresa_id, nome, tipo, titular, data_vencimento, arquivo_nome, arquivo_base64
+  };
+
+  const editId = _editandoCertificadoId;
+  const snapshot = JSON.parse(JSON.stringify(cachedCertificadosDigitais));
+
+  const payload = editId
+    ? { ...certificado }
+    : { id: uid(), ...certificado };
+
+  const method = editId ? 'PUT' : 'POST';
+  const path = editId ? 'certificados-digitais/' + editId : 'certificados-digitais';
+  try {
+    const r = await apiCall(method, path, payload);
+    if (!r || !r.ok) throw new Error(r?.erro || 'Erro ao salvar certificado');
+    if (editId) {
+      const idx = cachedCertificadosDigitais.findIndex(c => c.id === editId);
+      if (idx !== -1) cachedCertificadosDigitais[idx] = { ...cachedCertificadosDigitais[idx], ...certificado, updated_at: new Date().toISOString() };
+    } else {
+      cachedCertificadosDigitais.push({ id: payload.id, ...certificado, criado_em: new Date().toISOString(), updated_at: new Date().toISOString() });
+    }
+    saveCertificadosDigitais(cachedCertificadosDigitais);
+    renderCertificadosDigitais();
+    renderPgCertificadosDigitais();
+    fecharModal('modal-certificado');
+    mostrarToast('Certificado salvo com sucesso!', 'sucesso');
+  } catch (e) {
+    cachedCertificadosDigitais = snapshot;
+    saveCertificadosDigitais(cachedCertificadosDigitais);
+    renderCertificadosDigitais();
+    renderPgCertificadosDigitais();
+    mostrarToast('Erro ao salvar certificado: ' + e.message, 'erro');
+  }
+}
+
+function excluirCertificado(id) {
+  const _user = JSON.parse(sessionStorage.getItem('user') || '{}');
+  if (_user.role !== 'admin') {
+    mostrarToast('Apenas o administrador pode excluir certificados.', 'erro'); return;
+  }
+  if (!confirm('Excluir este certificado digital?')) return;
+  cachedCertificadosDigitais = cachedCertificadosDigitais.filter(c => c.id !== id);
+  saveCertificadosDigitais(cachedCertificadosDigitais);
+  apiCall('DELETE', 'certificados-digitais/' + id).catch(() => {});
+  renderCertificadosDigitais();
+  renderPgCertificadosDigitais();
+  mostrarToast('Certificado excluido.', 'sucesso');
+}
+
+// ===================== CERTIFICADOS DIGITAIS - PAGINA PRINCIPAL =====================
+function popularPgCdEmpresaFiltro() {
+  const sel = document.getElementById('pg-cd-empresa-filtro');
+  if (!sel) return;
+  const atual = sel.value;
+  sel.innerHTML = '<option value="">Todas</option>';
+  getEmpresas().filter(e => e.active !== 0).forEach(e => {
+    const opt = document.createElement('option');
+    opt.value = e.id; opt.textContent = e.nome;
+    sel.appendChild(opt);
+  });
+  if (atual) sel.value = atual;
+}
+
+function renderPgCertificadosDigitais() {
+  const tb = document.getElementById('tb-pg-certificados-digitais');
+  if (!tb) return;
+  const empresaFilter = document.getElementById('pg-cd-empresa-filtro')?.value || '';
+  const certificados = getCertificadosDigitais(empresaFilter || null);
+  const empresas = getEmpresas();
+  const _user = JSON.parse(sessionStorage.getItem('user') || '{}');
+  const isAdm = _user.role === 'admin';
+  if (!certificados.length) {
+    tb.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#aaa;padding:32px">Nenhum certificado encontrado.</td></tr>';
+    return;
+  }
+  tb.innerHTML = certificados.map((c, i) => {
+    const emp = empresas.find(e => e.id === c.empresa_id);
+    const venc = c.data_vencimento ? new Date(c.data_vencimento + 'T00:00:00') : null;
+    const hoje = new Date();
+    const diasRestantes = venc ? Math.ceil((venc - hoje) / (1000 * 60 * 60 * 24)) : null;
+    let vencBadge = '';
+    if (diasRestantes !== null) {
+      if (diasRestantes < 0) vencBadge = '<span class="badge badge-vencido">Vencido</span>';
+      else if (diasRestantes <= 30) vencBadge = '<span class="badge badge-alerta">Vence em ' + diasRestantes + 'd</span>';
+    }
+    return `<tr>
+    <td>${i + 1}</td>
+    <td>${escapeHtml(c.nome)}</td>
+    <td>${escapeHtml(c.tipo)}</td>
+    <td>${escapeHtml(c.titular || '—')}</td>
+    <td>${emp ? escapeHtml(emp.nome) : '—'}</td>
+    <td>${c.data_vencimento ? formatDate(c.data_vencimento) + ' ' + vencBadge : '—'}</td>
+    <td>${c.arquivo_nome ? '<span title="' + escapeHtml(c.arquivo_nome) + '" style="color:#007bff;cursor:default;">' + escapeHtml(c.arquivo_nome).substring(0, 25) + '</span>' : '—'}</td>
+    <td style="display:flex;gap:4px;">
+      <button class="btn btn-sm btn-primary" onclick="editarCertificado('${c.id}')" style="padding:2px 8px;font-size:0.75rem;">Editar</button>
+      ${isAdm ? `<button class="btn btn-sm btn-danger" onclick="excluirCertificado('${c.id}')" style="padding:2px 8px;font-size:0.75rem;">Excluir</button>` : ''}
+    </td>
+  </tr>`}).join('');
+}
+
 // ===================== SETORES =====================
 let _editandoSetorId = null;
 
@@ -2682,7 +3130,7 @@ function renderSetoresConfig() {
     return;
   }
   const _user = JSON.parse(sessionStorage.getItem('user') || '{}');
-  const isAdmin = _user.role === 'admin';
+  const isAdmin = _user.role === 'admin' || _user.role === 'setor_admin';
   tb.innerHTML = sectors.map((s, i) => {
     const ativo = s.active !== 0;
     return `<tr${ativo ? '' : ' style="opacity:0.55"'}>
@@ -3419,6 +3867,10 @@ function renderCertidoes(page) {
   if (tipoFilter) lista = lista.filter(c => c.tipo === tipoFilter);
   if (statusFilter) lista = lista.filter(c => calcStatusCertidao(c) === statusFilter);
 
+  lista = sortCertidoes(lista);
+
+  updateCertHeader();
+
   const total = lista.length;
   const perPage = pageSizes['cert-pagination'] || PAGE_SIZE;
   const start = (certCurrentPage - 1) * perPage;
@@ -3433,6 +3885,8 @@ function renderCertidoes(page) {
 
   tb.innerHTML = paginated.map(c => {
     const emp = getEmpresas().find(e => e.id === c.empresaId);
+    const _user = JSON.parse(sessionStorage.getItem('user') || '{}');
+    const isAdm = _user.role === 'admin';
     const st = calcStatusCertidao(c);
     const stLabel = { valida: 'Válida', vencida: 'Vencida', vencendo: 'Vencendo', pendente: 'Pendente' }[st];
     const stClass = { valida: 'badge-valida', vencida: 'badge-vencido', vencendo: 'badge-pendente', pendente: 'badge-pendente' }[st];
@@ -3451,7 +3905,7 @@ function renderCertidoes(page) {
       <td>${arqBtn}</td>
       <td style="display:flex;gap:4px;">
         <button class="btn btn-sm btn-primary" onclick="editarCertidao('${c.id}')" style="padding:2px 8px;font-size:0.75rem;">Editar</button>
-        <button class="btn btn-sm btn-danger" onclick="excluirCertidao('${c.id}')" style="padding:2px 8px;font-size:0.75rem;">Excluir</button>
+        ${isAdm ? `<button class="btn btn-sm btn-danger" onclick="excluirCertidao('${c.id}')" style="padding:2px 8px;font-size:0.75rem;">Excluir</button>` : ''}
       </td>
     </tr>`;
   }).join('');
@@ -3530,11 +3984,20 @@ function popularModalCertidaoTipo() {
   const sel = document.getElementById('mc-tipo');
   if (!sel) return;
   sel.innerHTML = '<option value="">Selecione...</option>';
-  TIPOS_CERTIDAO.forEach(t => {
-    const opt = document.createElement('option');
-    opt.value = t; opt.textContent = t;
-    sel.appendChild(opt);
-  });
+  const tipos = getTiposCertidao().filter(t => t.active !== 0);
+  if (tipos.length === 0) {
+    TIPOS_CERTIDAO.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t; opt.textContent = t;
+      sel.appendChild(opt);
+    });
+  } else {
+    tipos.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.nome; opt.textContent = t.nome;
+      sel.appendChild(opt);
+    });
+  }
 }
 
 const CERTIDOES_FEDERAIS = ['Cartão CNPJ Ativo (Receita Federal)', 'CND Federal'];
@@ -3670,6 +4133,10 @@ async function salvarCertidao() {
 }
 
 async function excluirCertidao(id) {
+  const _user = JSON.parse(sessionStorage.getItem('user') || '{}');
+  if (_user.role !== 'admin') {
+    mostrarToast('Apenas o administrador pode excluir certidoes.', 'erro'); return;
+  }
   if (!confirm('Excluir esta certidao?')) return;
   const ts = now();
   try {
@@ -3706,6 +4173,10 @@ function renderLicitacoes(page) {
   if (statusFilter) lista = lista.filter(l => l.status === statusFilter);
   if (numeroFilter) lista = lista.filter(l => (l.numeroLicitacao || '').toLowerCase().includes(numeroFilter));
 
+  lista = sortLicitacoes(lista);
+
+  updateLcHeader();
+
   const total = lista.length;
   const perPage = pageSizes['lc-pagination'] || PAGE_SIZE;
   const start = (lcCurrentPage - 1) * perPage;
@@ -3724,7 +4195,9 @@ function renderLicitacoes(page) {
     const stLabel = calcStatusLicitacao(l);
     const stClass = { em_andamento: 'badge-andamento', inativo: 'badge-inativo' }[st] || 'badge-andamento';
     const vigencia = (l.dataInicio && l.dataFim) ? `${fmtData(l.dataInicio)} a ${fmtData(l.dataFim)}` : '—';
-    const arquivos = l.arquivos || [];
+    let arquivos = l.arquivos || [];
+    if (typeof arquivos === 'string') { try { arquivos = JSON.parse(arquivos); } catch(e) { arquivos = []; } }
+    if (!Array.isArray(arquivos)) arquivos = [];
     const arqBtns = arquivos.map((a, i) => `<button class="btn btn-sm btn-primary" onclick="previewAnexo('${a.data || ''}','${escapeHtml(a.name || 'arquivo')}')" style="padding:2px 8px;font-size:0.75rem;">${escapeHtml(a.tipo || a.name?.slice(0,15) || 'arq')}</button>`).join(' ') || '—';
     const cnpj = l.cnpj || '—';
     const nomeLic = l.nomeLicitacao || '—';
@@ -3818,6 +4291,10 @@ function editarLicitacao(id) {
 }
 
 async function salvarLicitacao() {
+  const arquivoInput = document.getElementById('ml-novo-arquivo');
+  if (arquivoInput.files && arquivoInput.files[0]) {
+    await adicionarArquivoLicitacao();
+  }
   const numero = document.getElementById('ml-numero').value.trim();
   const objeto = document.getElementById('ml-objeto').value.trim();
   const cnpj = document.getElementById('ml-cnpj').value.trim();
@@ -3847,6 +4324,7 @@ async function salvarLicitacao() {
     const idx = licitacoes.findIndex(l => l.id === editId);
     if (idx === -1) return;
     lcObj = { ...licitacoes[idx], numeroLicitacao: numero, nomeLicitacao, cnpj, edital, objeto, empresaId, valor, dataHomologacao, dataInicio, dataFim, status, obs, updated_at: now() };
+    lcObj.arquivos = _licitacaoArquivosTemp.length > 0 ? _licitacaoArquivosTemp : (Array.isArray(lcObj.arquivos) ? lcObj.arquivos : []);
   } else {
     lcObj = {
       id: uid(), numeroLicitacao: numero, nomeLicitacao, cnpj, edital, objeto,
@@ -3861,7 +4339,7 @@ async function salvarLicitacao() {
     valor: lcObj.valor || 0,
     data_homologacao: lcObj.dataHomologacao || '', data_inicio: lcObj.dataInicio || '',
     data_fim: lcObj.dataFim || '', status: lcObj.status || 'em_andamento',
-    arquivos: JSON.stringify(lcObj.arquivos || []), obs: lcObj.obs || '',
+    arquivos: JSON.stringify(_licitacaoArquivosTemp.length > 0 ? _licitacaoArquivosTemp : (Array.isArray(lcObj.arquivos) ? lcObj.arquivos : [])), obs: lcObj.obs || '',
     nome_licitacao: lcObj.nomeLicitacao || '', cnpj: lcObj.cnpj || ''
   };
   const method = editId ? 'PUT' : 'POST';
@@ -3973,6 +4451,41 @@ function abrirDetalheLicitacao(id) {
   }
   html += `</div>`;
 
+  const certRelacionadas = getCertidoes().filter(c => {
+    if (c.empresaId !== l.empresaId) return false;
+    const st = calcStatusCertidao(c);
+    return st === 'valida' || st === 'vencendo';
+  });
+
+  if (certRelacionadas.length) {
+    html += `<h4 style="margin:20px 0 8px;color:#1a3c5e;">Certidões Válidas da Empresa</h4>`;
+    html += `<div style="overflow-x:auto;"><table style="width:100%;font-size:0.82rem;">
+      <thead><tr>
+        <th>Tipo</th><th>UF</th><th>Cidade</th><th>Emissão</th><th>Validade</th><th>Status</th><th>Anexo</th>
+      </tr></thead><tbody>`;
+    certRelacionadas.forEach(c => {
+      const st = calcStatusCertidao(c);
+      const stLabel = { valida: 'Válida', vencendo: 'Vencendo' }[st];
+      const stClass = { valida: 'badge-valida', vencendo: 'badge-pendente' }[st];
+      const arq = c.arquivo;
+      const hasFile = arq && typeof arq === 'object' && !Array.isArray(arq) && arq.data;
+      const arqBtn = hasFile ? `<button class="btn btn-sm btn-primary" onclick="previewCertidaoArquivo('${c.id}')" style="padding:2px 8px;font-size:0.75rem;">Ver</button>` : '—';
+      html += `<tr>
+        <td>${escapeHtml(c.tipo)}</td>
+        <td>${c.uf || '—'}</td>
+        <td>${c.cidade || '—'}</td>
+        <td>${c.dataEmissao ? fmtData(c.dataEmissao) : '—'}</td>
+        <td>${c.dataValidade ? fmtData(c.dataValidade) : '—'}</td>
+        <td><span class="badge ${stClass}">${stLabel}</span></td>
+        <td>${arqBtn}</td>
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+  } else {
+    html += `<h4 style="margin:20px 0 8px;color:#1a3c5e;">Certidões Válidas da Empresa</h4>`;
+    html += `<p style="color:#aaa;font-size:0.85rem;">Nenhuma certidão válida encontrada para esta empresa.</p>`;
+  }
+
   document.getElementById('detalhe-content').innerHTML = html;
   const btns = document.getElementById('detalhe-btns');
   btns.innerHTML = `<button class="btn btn-primary" onclick="editarLicitacao('${id}'); fecharModal('modal-detalhe')">Editar</button>`;
@@ -3982,7 +4495,7 @@ function abrirDetalheLicitacao(id) {
 let _licitacaoArquivosTemp = [];
 
 function renderArquivosLicitacao(arquivos) {
-  _licitacaoArquivosTemp = arquivos || [];
+  _licitacaoArquivosTemp = Array.isArray(arquivos) ? arquivos : (typeof arquivos === 'string' ? (() => { try { return JSON.parse(arquivos); } catch(e) { return []; } })() : []);
   const container = document.getElementById('ml-arquivos-lista');
   if (!_licitacaoArquivosTemp.length) {
     container.innerHTML = '<p style="color:#aaa;font-size:0.85rem;">Nenhum arquivo anexado.</p>';
@@ -4006,7 +4519,8 @@ async function adicionarArquivoLicitacao() {
     mostrarToast('Selecione um arquivo.', 'erro'); return;
   }
   const b64 = await fileToBase64(input.files[0]);
-  _licitacaoArquivosTemp.push({ name: input.files[0].name, data: b64, tipo });
+  _licitacaoArquivosTemp.push({ name: b64.name, data: b64.data, tipo });
+  console.log('[ARQ] Arquivo adicionado. Total:', _licitacaoArquivosTemp.length, _licitacaoArquivosTemp.map(a => a.name));
   input.value = '';
   renderArquivosLicitacao(_licitacaoArquivosTemp);
   const editId = document.getElementById('ml-id').value;
@@ -4017,7 +4531,7 @@ async function adicionarArquivoLicitacao() {
       licitacoes[idx].arquivos = _licitacaoArquivosTemp;
       saveLicitacoes(licitacoes);
       apiCall('PUT', 'licitacoes/' + editId, { arquivos: JSON.stringify(_licitacaoArquivosTemp) }).catch(() => {
-        syncToServer().catch(() => {});
+        if (SYNC_ENABLED) syncToServer().catch(() => {});
       });
     }
   }
@@ -4035,7 +4549,7 @@ function removerArquivoLicitacao(idx) {
       licitacoes[licIdx].arquivos = _licitacaoArquivosTemp;
       saveLicitacoes(licitacoes);
       apiCall('PUT', 'licitacoes/' + editId, { arquivos: JSON.stringify(_licitacaoArquivosTemp) }).catch(() => {
-        syncToServer().catch(() => {});
+        if (SYNC_ENABLED) syncToServer().catch(() => {});
       });
     }
   }
@@ -4142,6 +4656,7 @@ function showPage(id, btn) {
   if (id === 'dashboard') renderDashboard();
   if (id === 'certidoes') { popularFiltroEmpresaCertidoes(); popularFiltroUfCertidoes(); popularFiltroTipoCertidoes(); renderCertidoes(); }
   if (id === 'licitacoes') { popularFiltroEmpresaLicitacoes(); renderLicitacoes(); }
+  if (id === 'certificados-digitais') { popularPgCdEmpresaFiltro(); renderPgCertificadosDigitais(); }
   if (id === 'configuracao') {
     const activeSub = document.querySelector('.config-section.active');
     if (!activeSub) showConfigSub('usuarios');
@@ -4162,10 +4677,10 @@ function showConfigSub(section) {
   if (section === 'usuarios' && !isAdminOrSetorAdmin) {
     section = 'minha-conta';
   }
-  if (isSetorAdmin && ['empresas', 'setores', 'tipos', 'email', 'historico'].includes(section)) {
+  if (isSetorAdmin && ['empresas', 'certificados-digitais', 'setores', 'tipos', 'email', 'historico'].includes(section)) {
     section = 'usuarios';
   }
-  if (!isAdminOrSetorAdmin && ['destinatarios'].includes(section)) {
+  if (!isAdminOrSetorAdmin && ['destinatarios', 'certificados-digitais'].includes(section)) {
     section = 'minha-conta';
   }
 
@@ -4187,6 +4702,7 @@ function showConfigSub(section) {
 
   if (section === 'usuarios') renderUsuarios();
   if (section === 'empresas') { renderEmpresasConfig(); popularDestEmpresaCheckboxes(); }
+  if (section === 'certificados-digitais') { popularFiltroEmpresaCertificados(); renderCertificadosDigitais(); }
   if (section === 'setores') renderSetoresConfig();
   if (section === 'tipos') renderTiposConfig();
   if (section === 'destinatarios') { renderDestinatariosConfig(); popularDestEmpresaCheckboxes(); }
@@ -4216,6 +4732,74 @@ document.addEventListener('keydown', function(e) {
 // ===================== DASHBOARD =====================
 let dashVencPage = 1;
 let dashVencPerPage = 15;
+let dashCharts = {};
+
+function renderDashboardCharts(certidoes, licitacoes) {
+  if (typeof Chart === 'undefined') return;
+
+  Object.values(dashCharts).forEach(c => c.destroy());
+  dashCharts = {};
+
+  const certValida = certidoes.filter(c => calcStatusCertidao(c) === 'valida').length;
+  const certVencendo = certidoes.filter(c => calcStatusCertidao(c) === 'vencendo').length;
+  const certVencida = certidoes.filter(c => calcStatusCertidao(c) === 'vencida').length;
+  const certPendente = certidoes.filter(c => calcStatusCertidao(c) === 'pendente').length;
+
+  const cs1 = document.getElementById('chart-cert-status');
+  if (cs1 && (certValida + certVencendo + certVencida + certPendente) > 0) {
+    dashCharts.certStatus = new Chart(cs1, {
+      type: 'doughnut',
+      data: {
+        labels: ['Válida', 'Vencendo', 'Vencida', 'Pendente'],
+        datasets: [{ data: [certValida, certVencendo, certVencida, certPendente], backgroundColor: ['#28a745', '#ffc107', '#dc3545', '#6c757d'], borderWidth: 1 }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+    });
+  }
+
+  const licAndamento = licitacoes.filter(l => l.status === 'em_andamento' || !l.status).length;
+  const licInativo = licitacoes.filter(l => l.status === 'inativo').length;
+
+  const cs2 = document.getElementById('chart-lic-status');
+  if (cs2 && (licAndamento + licInativo) > 0) {
+    dashCharts.licStatus = new Chart(cs2, {
+      type: 'doughnut',
+      data: {
+        labels: ['Em Andamento', 'Inativo'],
+        datasets: [{ data: [licAndamento, licInativo], backgroundColor: ['#17a2b8', '#adb5bd'], borderWidth: 1 }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+    });
+  }
+
+  const meses = [];
+  const contadores = [];
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(hoje.getFullYear(), hoje.getMonth() + i, 1);
+    const prox = new Date(hoje.getFullYear(), hoje.getMonth() + i + 1, 0);
+    meses.push(d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }));
+    const count = certidoes.filter(c => {
+      if (!c.dataValidade) return false;
+      const dv = new Date(c.dataValidade + 'T12:00:00');
+      return dv >= d && dv <= prox;
+    }).length;
+    contadores.push(count);
+  }
+
+  const cs3 = document.getElementById('chart-cert-venc');
+  if (cs3) {
+    dashCharts.certVenc = new Chart(cs3, {
+      type: 'bar',
+      data: {
+        labels: meses,
+        datasets: [{ label: 'Vencimentos', data: contadores, backgroundColor: '#007bff', borderRadius: 4 }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+    });
+  }
+}
+
 function renderDashboard() {
   const empIds = getLoggedUserEmpresaIds();
   const hoje = new Date(); hoje.setHours(0,0,0,0);
@@ -4256,10 +4840,7 @@ function renderDashboard() {
       <div class="label">Lic. Vencidas</div>
     </div>`;
 
-  const tb = document.getElementById('tb-vencimentos');
-  const pagDiv = document.getElementById('dash-venc-pagination');
-  if (tb) tb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#aaa;padding:32px">Nenhum dado de pagamento disponível.</td></tr>';
-  if (pagDiv) pagDiv.innerHTML = '';
+  renderDashboardCharts(certidoes, licitacoes);
 }
 
 // ===================== HELPERS =====================
@@ -4781,7 +5362,13 @@ async function apiCall(method, path, body) {
   await getCsrfToken();
   const opts = { method, headers: csrfHeaders() };
   if (body && method !== 'GET') opts.body = JSON.stringify({ ...body, csrf_token: csrfToken });
-  const r = await fetch('/api/' + path, opts);
+  let r;
+  try {
+    r = await fetch('/api/' + path, opts);
+  } catch (fetchErr) {
+    console.error('[apiCall] fetch falhou:', fetchErr);
+    throw new Error('Nao foi possivel conectar ao servidor. Verifique se o servidor esta rodando.');
+  }
   if (r.status === 401) {
     sessionStorage.removeItem('logged_in');
     mostrarToast('Sessao expirada. Faca login novamente.', 'erro');
@@ -4964,7 +5551,121 @@ function alterarMinhaSenha() {
 // ─── PAGINAÇÃO ──────────────────────────────────────────────
 const PAGE_SIZE = 25;
 let certCurrentPage = 1;
+let certSortCol = '';
+let certSortDir = 'asc';
+
+function sortCertidoes(lista) {
+  if (!certSortCol) return lista;
+  const dir = certSortDir === 'asc' ? 1 : -1;
+  return [...lista].sort((a, b) => {
+    let va, vb;
+    switch (certSortCol) {
+      case 'empresa': va = (getEmpresas().find(e => e.id === a.empresaId)?.nome || '').toLowerCase(); vb = (getEmpresas().find(e => e.id === b.empresaId)?.nome || '').toLowerCase(); break;
+      case 'cnpj': va = (a.cnpj || '').replace(/\D/g, ''); vb = (b.cnpj || '').replace(/\D/g, ''); break;
+      case 'uf': va = (a.uf || '').toLowerCase(); vb = (b.uf || '').toLowerCase(); break;
+      case 'cidade': va = (a.cidade || '').toLowerCase(); vb = (b.cidade || '').toLowerCase(); break;
+      case 'tipo': va = (a.tipo || '').toLowerCase(); vb = (b.tipo || '').toLowerCase(); break;
+      case 'emissao': va = a.dataEmissao || ''; vb = b.dataEmissao || ''; break;
+      case 'validade': va = a.dataValidade || ''; vb = b.dataValidade || ''; break;
+      case 'status': va = calcStatusCertidao(a); vb = calcStatusCertidao(b); break;
+      default: return 0;
+    }
+    if (va < vb) return -1 * dir;
+    if (va > vb) return 1 * dir;
+    return 0;
+  });
+}
+
+function toggleCertSort(col) {
+  if (certSortCol === col) {
+    certSortDir = certSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    certSortCol = col;
+    certSortDir = 'asc';
+  }
+  renderCertidoes(1);
+}
+
+function certSortIcon(col) {
+  if (certSortCol !== col) return ' <span style="font-size:0.65rem;opacity:0.4;">&#9650;&#9660;</span>';
+  return certSortDir === 'asc' ? ' <span style="font-size:0.65rem;">&#9650;</span>' : ' <span style="font-size:0.65rem;">&#9660;</span>';
+}
+
+function updateCertHeader() {
+  const cols = [
+    { key: 'empresa', label: 'Empresa' },
+    { key: 'cnpj', label: 'CNPJ' },
+    { key: 'uf', label: 'UF' },
+    { key: 'cidade', label: 'Cidade' },
+    { key: 'tipo', label: 'Tipo' },
+    { key: 'emissao', label: 'Emissão' },
+    { key: 'validade', label: 'Validade' },
+    { key: 'status', label: 'Status' },
+  ];
+  const row = document.getElementById('cert-header-row');
+  if (!row) return;
+  row.innerHTML = cols.map(c =>
+    `<th onclick="toggleCertSort('${c.key}')" style="cursor:pointer;user-select:none;">${c.label}${certSortIcon(c.key)}</th>`
+  ).join('') + '<th>Anexo</th><th>Ações</th>';
+}
 let lcCurrentPage = 1;
+let lcSortCol = '';
+let lcSortDir = 'asc';
+
+function sortLicitacoes(lista) {
+  if (!lcSortCol) return lista;
+  const dir = lcSortDir === 'asc' ? 1 : -1;
+  return [...lista].sort((a, b) => {
+    let va, vb;
+    switch (lcSortCol) {
+      case 'numero': va = (a.numeroLicitacao || '').toLowerCase(); vb = (b.numeroLicitacao || '').toLowerCase(); break;
+      case 'nome': va = (a.nomeLicitacao || '').toLowerCase(); vb = (b.nomeLicitacao || '').toLowerCase(); break;
+      case 'cnpj': va = (a.cnpj || '').replace(/\D/g, ''); vb = (b.cnpj || '').replace(/\D/g, ''); break;
+      case 'empresa': va = (getEmpresas().find(e => e.id === a.empresaId)?.nome || '').toLowerCase(); vb = (getEmpresas().find(e => e.id === b.empresaId)?.nome || '').toLowerCase(); break;
+      case 'objeto': va = (a.objeto || '').toLowerCase(); vb = (b.objeto || '').toLowerCase(); break;
+      case 'valor': va = a.valor || 0; vb = b.valor || 0; return (va - vb) * dir;
+      case 'vigencia': va = a.dataFim || ''; vb = b.dataFim || ''; break;
+      case 'status': va = (a.status || '').toLowerCase(); vb = (b.status || '').toLowerCase(); break;
+      default: return 0;
+    }
+    if (va < vb) return -1 * dir;
+    if (va > vb) return 1 * dir;
+    return 0;
+  });
+}
+
+function toggleLcSort(col) {
+  if (lcSortCol === col) {
+    lcSortDir = lcSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    lcSortCol = col;
+    lcSortDir = 'asc';
+  }
+  renderLicitacoes(1);
+}
+
+function lcSortIcon(col) {
+  if (lcSortCol !== col) return ' <span style="font-size:0.65rem;opacity:0.4;">&#9650;&#9660;</span>';
+  return lcSortDir === 'asc' ? ' <span style="font-size:0.65rem;">&#9650;</span>' : ' <span style="font-size:0.65rem;">&#9660;</span>';
+}
+
+function updateLcHeader() {
+  const cols = [
+    { key: 'numero', label: 'Nº Licitação' },
+    { key: 'nome', label: 'Nome' },
+    { key: 'cnpj', label: 'CNPJ' },
+    { key: 'empresa', label: 'Empresa' },
+    { key: 'objeto', label: 'Objeto' },
+    { key: 'valor', label: 'Valor do Contrato' },
+    { key: 'vigencia', label: 'Vigência' },
+    { key: 'status', label: 'Status' },
+  ];
+  const row = document.getElementById('lc-header-row');
+  if (!row) return;
+  row.innerHTML = cols.map(c =>
+    `<th onclick="toggleLcSort('${c.key}')" style="cursor:pointer;user-select:none;">${c.label}${lcSortIcon(c.key)}</th>`
+  ).join('') + '<th>Anexo</th><th>Ações</th>';
+}
 let pageSizes = { 'cert-pagination': 25, 'lc-pagination': 25 };
 
 function renderPagination(totalItems, currentPage, containerId, renderFn) {
@@ -5211,6 +5912,7 @@ if (resetToken) {
 
 // Sincronizacao em tempo real: busca do servidor a cada 30 segundos
 let _syncRunning = false;
+const SYNC_ENABLED = true;
 let _lastSyncAt = localStorage.getItem('lastSyncAt') || null;
 let _pendingSync = false;
 let _serverOffset = parseInt(localStorage.getItem('serverOffset') || '0');
@@ -5220,7 +5922,7 @@ function now() { return new Date(Date.now() + _serverOffset).toISOString(); }
 function saveLastSyncAt() { try { localStorage.setItem('lastSyncAt', _lastSyncAt); } catch(e) {} }
 function saveServerOffset() { try { localStorage.setItem('serverOffset', String(_serverOffset)); } catch(e) {} }
 function syncRealtime() {
-  if (!db || sessionStorage.getItem('logged_in') !== 'true' || _syncRunning) return;
+  if (!SYNC_ENABLED || !db || sessionStorage.getItem('logged_in') !== 'true' || _syncRunning) return;
   if (Date.now() - _lastSyncCompletedAt < SYNC_COOLDOWN_MS) { console.log('[SYNC-RT] Pulando: cooldown ativo'); return; }
   _syncRunning = true;
   console.log('[SYNC-RT] Iniciando ciclo de sync...');
@@ -5242,11 +5944,12 @@ function syncRealtime() {
   });
 }
 setInterval(syncRealtime, 300000);
-window.addEventListener('focus', () => { if (sessionStorage.getItem('logged_in') === 'true' && !_syncRunning) syncRealtime(); });
-setInterval(() => { if (_pendingSync && !_syncRunning) syncRealtime(); }, 30000);
+window.addEventListener('focus', () => { if (SYNC_ENABLED && sessionStorage.getItem('logged_in') === 'true' && !_syncRunning) syncRealtime(); });
+setInterval(() => { if (SYNC_ENABLED && _pendingSync && !_syncRunning) syncRealtime(); }, 30000);
 </script>
 <script>
 (function() {
+  if (!SYNC_ENABLED) { console.log('[REALTIME] Desabilitado via SYNC_ENABLED=false'); return; }
   const SUPABASE_URL = 'https://ljuvafbnvxxwuvyfapwm.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxqdXZhZmJudnh4d3V2eWZhcHdtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5MjM5NzgsImV4cCI6MjEwMjQ5OTk3OH0.xW-ZERpdQ6n6X6UyCk6h-oxZ_c1355_mDeGhhEx3a5w';
 

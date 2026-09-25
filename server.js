@@ -1,3 +1,4 @@
+import 'dotenv/config'
 import http from 'http'
 import fs from 'fs'
 import path from 'path'
@@ -17,6 +18,8 @@ const MIME = {
   '.ico': 'image/x-icon',
 }
 
+const { default: apiHandler } = await import('./api/index.js')
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`)
   let pathname = url.pathname
@@ -30,37 +33,37 @@ const server = http.createServer(async (req, res) => {
     }
 
     const apiPath = pathname.replace('/api/', '')
-    const slug = apiPath ? apiPath.split('/') : []
-    const query = {}
-    for (const [k, v] of url.searchParams) query[k] = v
+    const slugParts = apiPath ? apiPath.split('/') : []
 
-    const event = {
-      path: pathname,
-      httpMethod: req.method,
-      headers: req.headers,
-      body: rawBody || null,
-      queryStringParameters: query,
-      _rawParsedBody: null
+    req.query = { ...Object.fromEntries(url.searchParams), path: slugParts }
+    req.body = rawBody || ''
+    req.url = pathname
+    req.method = req.method
+
+    const fakeRes = {
+      _status: 200,
+      _headers: {},
+      _body: null,
+      setHeader(k, v) { this._headers[k] = v },
+      status(code) { this._status = code; return this },
+      send(body) { this._body = body; this._end(); },
+      json(body) { this._body = JSON.stringify(body); this._headers['Content-Type'] = 'application/json'; this._end(); },
+      _end() {
+        for (const [k, v] of Object.entries(this._headers)) {
+          res.setHeader(k, v)
+        }
+        res.writeHead(this._status)
+        res.end(this._body || '')
+      }
     }
 
     try {
-      if (rawBody && req.headers['content-type']?.includes('application/json')) {
-        event._rawParsedBody = JSON.parse(rawBody)
-      }
-    } catch {}
-
-    const { default: handler } = await import('./api/index.js')
-    const result = await handler(event)
-
-    if (result.headers) {
-      for (const [k, v] of Object.entries(result.headers)) {
-        res.setHeader(k, v)
-      }
+      return await apiHandler(req, fakeRes)
+    } catch (e) {
+      console.error('[LOCAL] API Error:', e.message)
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      return res.end(JSON.stringify({ ok: false, erro: e.message }))
     }
-
-    const contentType = result.headers?.['Content-Type'] || 'application/json'
-    res.setHeader('Content-Type', contentType)
-    return res.status(result.statusCode || 200).send(result.body)
   }
 
   if (pathname === '/') pathname = '/index.html'
