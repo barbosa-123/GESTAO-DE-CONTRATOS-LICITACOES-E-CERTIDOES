@@ -285,12 +285,17 @@ async function getEmailConfig() {
         Buffer.from(cfg.email_senha_enc, 'hex').slice(0, 16)
       )
       const encrypted = Buffer.from(cfg.email_senha_enc, 'hex').slice(16)
-      cfg.email_senha = decipher.update(encrypted) + decipher.final('utf8')
-    } catch {
+      cfg.email_senha = Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8')
+      console.log('[EMAIL-DECRYPT] Senha descriptografada, len:', cfg.email_senha.length)
+    } catch (e) {
+      console.error('[EMAIL-DECRYPT] Erro ao descriptografar:', e.message)
       cfg.email_senha = ''
     }
   }
   cfg.email_senha_enc = undefined
+  if (cfg.prazos && typeof cfg.prazos === 'string') {
+    try { cfg.prazos = JSON.parse(cfg.prazos); } catch (e) { cfg.prazos = {}; }
+  }
   return cfg
 }
 
@@ -312,7 +317,12 @@ async function saveEmailConfig(cfg) {
     email_senha_enc: data.email_senha_enc || '',
     email_destinatario: data.email_destinatario || ''
   }
-  await getSupabase().from('email_config').upsert(dbData)
+  if (data.prazos) {
+    dbData.prazos = JSON.stringify(data.prazos)
+  }
+  const { error } = await getSupabase().from('email_config').upsert(dbData)
+  if (error) console.error('[EMAIL] Erro ao salvar config:', error.message)
+  else console.log('[EMAIL] Config salva. Senha criptografada len:', (dbData.email_senha_enc || '').length)
 }
 
 // ─── EMAIL SENDING ─────────────────────────────────────────────────────────
@@ -475,7 +485,7 @@ function montarHtmlCertidoes(vencidas, grupos, tituloExtra = '') {
   return html || `<p style="color:#2e7d52">Nenhuma certidao com alerta pendente.</p>`
 }
 
-function processLicitacoesVencidas(licitacoes, hoje) {
+function processLicitacoesVencidas(licitacoes, hoje, empMap = {}) {
   const vencidas = []
   const hj = new Date(hoje)
   for (const lc of licitacoes) {
@@ -484,12 +494,12 @@ function processLicitacoesVencidas(licitacoes, hoje) {
     if (isNaN(df)) continue
     const diff = Math.floor((hj - df) / 86400000)
     if (diff <= 0) continue
-    vencidas.push({ id: lc.id, numero: lc.numero_licitacao || '', objeto: lc.objeto || '', empresa: lc.empresa_id || '', dataFim: datefmt(fv), dias: diff })
+    vencidas.push({ id: lc.id, numero: lc.numero_licitacao || '', objeto: lc.objeto || '', empresa: empMap[lc.empresa_id] || lc.empresa_id || '', dataFim: datefmt(fv), dias: diff })
   }
   return vencidas
 }
 
-function processLicitacoesAVencer(licitacoes, hoje) {
+function processLicitacoesAVencer(licitacoes, hoje, empMap = {}) {
   const grupos = { d35: [], d30: [], d15: [], d0_14: [] }
   const hj = new Date(hoje)
   for (const lc of licitacoes) {
@@ -498,7 +508,7 @@ function processLicitacoesAVencer(licitacoes, hoje) {
     if (isNaN(df)) continue
     const diff = Math.floor((df - hj) / 86400000)
     if (diff < 0) continue
-    const info = { id: lc.id, numero: lc.numero_licitacao || '', objeto: lc.objeto || '', empresa: lc.empresa_id || '', dataFim: datefmt(fv), dias: diff }
+    const info = { id: lc.id, numero: lc.numero_licitacao || '', objeto: lc.objeto || '', empresa: empMap[lc.empresa_id] || lc.empresa_id || '', dataFim: datefmt(fv), dias: diff }
     if (diff >= 31 && diff <= 35) grupos.d35.push(info)
     else if (diff >= 16 && diff <= 30) grupos.d30.push(info)
     else if (diff === 15) grupos.d15.push(info)
@@ -533,6 +543,7 @@ function montarHtmlLicitacoes(vencidas, grupos, tituloExtra = '') {
 
 async function enviarEmail(cfg, html, assunto, destinatario) {
   const port = parseInt(cfg.smtp_port) || 465
+  console.log('[EMAIL] Servidor:', cfg.smtp_server, 'Porta:', port, 'De:', cfg.email_remetente, 'Para:', destinatario, 'Senha len:', (cfg.email_senha || '').length)
   const transporter = nodemailer.createTransport({
     host: cfg.smtp_server || 'smtp.gmail.com',
     port: port,
@@ -766,6 +777,7 @@ async function vercelHandler(event) {
     if (route === 'config-email') {
       if (httpMethod === 'GET') {
         const cfg = await getEmailConfig()
+        console.log('[EMAIL-GET] smtp_server:', cfg.smtp_server, 'email_remetente:', cfg.email_remetente, 'senha_len:', (cfg.email_senha || '').length)
         cfg.email_senha = '********'
         return json(cfg)
       }
@@ -779,6 +791,9 @@ async function vercelHandler(event) {
         if (body.email_senha === '********' || !body.email_senha?.trim()) {
           body.email_senha = oldCfg?.email_senha_enc ? '********' : ''
           body.email_senha_enc = oldCfg?.email_senha_enc || ''
+        }
+        if (!body.prazos && oldCfg?.prazos) {
+          body.prazos = typeof oldCfg.prazos === 'string' ? JSON.parse(oldCfg.prazos) : oldCfg.prazos
         }
         await saveEmailConfig(body)
         return json({ ok: true })
@@ -935,6 +950,9 @@ async function vercelHandler(event) {
         return json({ ok: true, msg: 'Nenhum destinatario cadastrado para enviar alertas.' })
       }
       const { data: licitacoes } = await getSupabase().from('licitacoes').select('*')
+      const { data: empresas } = await getSupabase().from('companies').select('id, nome')
+      const empMap = {}
+      ;(empresas || []).forEach(e => { empMap[e.id] = e.nome })
       const hj = today()
 
       let enviados = 0, erros = []
@@ -944,8 +962,8 @@ async function vercelHandler(event) {
         const empresaIds = dest.empresaIds || []
         const empIdsSet = empresaIds.length ? new Set(empresaIds) : null
         const empLicitacoes = (licitacoes || []).filter(lc => !empIdsSet || empIdsSet.has(lc.empresa_id))
-        const vencidas = processLicitacoesVencidas(empLicitacoes, hj)
-        const grupos = processLicitacoesAVencer(empLicitacoes, hj)
+        const vencidas = processLicitacoesVencidas(empLicitacoes, hj, empMap)
+        const grupos = processLicitacoesAVencer(empLicitacoes, hj, empMap)
         if (!vencidas.length && !Object.values(grupos).some(g => g.length)) continue
         const rotulo = dest.nome ? ` - ${dest.nome}` : ''
         const htmlBody = `<html><body style="font-family:Arial,sans-serif;padding:20px">${montarHtmlLicitacoes(vencidas, grupos, rotulo)}<p style="color:#666;font-size:12px">Gerado em ${new Date().toLocaleString('pt-BR')}</p></body></html>`
@@ -957,6 +975,113 @@ async function vercelHandler(event) {
         }
       }
       if (!enviados && !erros.length) return json({ ok: true, msg: 'Nenhuma licitacao pendente para os destinatarios cadastrados.' })
+      return json({ ok: true, msg: `${enviados} e-mail(s) enviado(s).${erros.length ? ` Erros: ${erros.join('; ')}` : ''}` })
+    }
+
+    if (route === 'enviar-alertas-certificados-digitais') {
+      if (httpMethod !== 'POST') return json({ ok: false, erro: 'Metodo nao permitido' }, 405)
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      if (!validateCsrf(user, body.csrf_token)) {
+        return json({ ok: false, erro: 'CSRF invalido' }, 403)
+      }
+      const cfg = await getEmailConfig()
+      if (!cfg.email_remetente || !cfg.email_senha) {
+        return json({ ok: false, erro: 'Configure o e-mail primeiro.' })
+      }
+      const destinatariosData = body.destinatarios || []
+      const empresasData = body.empresas || []
+      if (!destinatariosData.length) {
+        return json({ ok: true, msg: 'Nenhum destinatario cadastrado para enviar alertas.' })
+      }
+      const certificados = body.certificadosDigitais || []
+      const hj = today()
+
+      const empMap = {}
+      empresasData.forEach(e => { empMap[e.id] = e.nome })
+
+      const vencidos = []
+      const aVencer = {}
+      const prazos = cfg.prazos || {}
+      const cdPrazos = prazos.certificados_digitais || {}
+      const faixa1 = cdPrazos.faixa1 || [21, 30]
+      const faixa2 = cdPrazos.faixa2 || [8, 20]
+      const faixa3 = cdPrazos.faixa3 || 7
+      const faixa4 = cdPrazos.faixa4 || [0, 7]
+
+      for (const cd of certificados) {
+        if (!cd.data_vencimento) continue
+        const dt = new Date(cd.data_vencimento + 'T00:00:00')
+        const hoje = new Date(hj + 'T00:00:00')
+        const diffDias = Math.ceil((dt - hoje) / (1000 * 60 * 60 * 24))
+        const empNome = empMap[cd.empresa_id] || ''
+        const item = { ...cd, empresa_nome: empNome, diffDias }
+
+        if (diffDias <= 0) {
+          vencidos.push(item)
+        } else if (diffDias <= faixa4[1]) {
+          if (!aVencer.faixa4) aVencer.faixa4 = []
+          aVencer.faixa4.push(item)
+        } else if (diffDias === faixa3) {
+          if (!aVencer.faixa3) aVencer.faixa3 = []
+          aVencer.faixa3.push(item)
+        } else if (diffDias >= faixa2[0] && diffDias <= faixa2[1]) {
+          if (!aVencer.faixa2) aVencer.faixa2 = []
+          aVencer.faixa2.push(item)
+        } else if (diffDias >= faixa1[0] && diffDias <= faixa1[1]) {
+          if (!aVencer.faixa1) aVencer.faixa1 = []
+          aVencer.faixa1.push(item)
+        }
+      }
+
+      let enviados = 0, erros = []
+      for (const dest of destinatariosData) {
+        const email = (dest.email || '').trim()
+        if (!email) continue
+        const empresaIds = dest.empresaIds || []
+        const empIdsSet = empresaIds.length ? new Set(empresaIds) : null
+
+        const filtVencidos = vencidos.filter(c => !empIdsSet || empIdsSet.has(c.empresa_id))
+        const filtAVencer = {}
+        for (const [k, arr] of Object.entries(aVencer)) {
+          const filtered = arr.filter(c => !empIdsSet || empIdsSet.has(c.empresa_id))
+          if (filtered.length) filtAVencer[k] = filtered
+        }
+
+        if (!filtVencidos.length && !Object.values(filtAVencer).some(g => g.length)) continue
+
+        let html = '<html><body style="font-family:Arial,sans-serif;padding:20px">'
+        html += '<h2 style="color:#1a5c35">Alerta de Certificados Digitais</h2>'
+
+        if (filtVencidos.length) {
+          html += '<h3 style="color:#c0392b">Vencidos</h3><table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;width:100%"><tr><th>CNPJ/CPF</th><th>Empresa</th><th>Vencimento</th></tr>'
+          for (const c of filtVencidos) {
+            html += `<tr><td>${c.cnpj || '—'}</td><td>${c.empresa_nome || '—'}</td><td style="color:#c0392b">${c.data_vencimento}</td></tr>`
+          }
+          html += '</table>'
+        }
+
+        const faixaLabels = { faixa4: 'Até ' + faixa4[1] + ' dias', faixa3: faixa3 + ' dias', faixa2: 'De ' + faixa2[0] + ' a ' + faixa2[1] + ' dias', faixa1: 'De ' + faixa1[0] + ' a ' + faixa1[1] + ' dias' }
+        for (const [k, arr] of Object.entries(filtAVencer)) {
+          html += `<h3 style="color:#d4820a">Vence em ${faixaLabels[k] || k}</h3><table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;width:100%"><tr><th>CNPJ/CPF</th><th>Empresa</th><th>Vencimento</th><th>Dias Restantes</th></tr>`
+          for (const c of arr) {
+            html += `<tr><td>${c.cnpj || '—'}</td><td>${c.empresa_nome || '—'}</td><td>${c.data_vencimento}</td><td>${c.diffDias}</td></tr>`
+          }
+          html += '</table>'
+        }
+
+        html += `<p style="color:#666;font-size:12px;margin-top:20px">Gerado em ${new Date().toLocaleString('pt-BR')}</p></body></html>`
+
+        const rotulo = dest.nome ? ` - ${dest.nome}` : ''
+        try {
+          await enviarEmail(cfg, html, `Alertas de Certificados Digitais${rotulo} - ${hj}`, email)
+          enviados++
+        } catch (e) {
+          erros.push(`${email}: ${e.message}`)
+        }
+      }
+
+      if (!enviados && !erros.length) return json({ ok: true, msg: 'Nenhum certificado digital pendente para os destinatarios cadastrados.' })
       return json({ ok: true, msg: `${enviados} e-mail(s) enviado(s).${erros.length ? ` Erros: ${erros.join('; ')}` : ''}` })
     }
 
@@ -1119,21 +1244,20 @@ async function vercelHandler(event) {
       if (!validateCsrf(user, body.csrf_token)) return json({ ok: false, erro: 'CSRF invalido' }, 403)
       const cid = body.id || crypto.randomUUID()
       const empresa_id = (body.empresa_id || '').trim()
-      const nome = (body.nome || '').trim()
-      if (!empresa_id || !nome) return json({ ok: false, erro: 'empresa_id e nome sao obrigatorios' }, 400)
-      const tipo = (body.tipo || 'e-CNPJ').trim()
-      const titular = (body.titular || '').trim()
+      const cnpj = (body.cnpj || '').trim()
+      if (!empresa_id || !cnpj) return json({ ok: false, erro: 'empresa_id e cnpj sao obrigatorios' }, 400)
+      const data_inclusao = (body.data_inclusao || '').trim()
+      const data_vencimento = (body.data_vencimento || '').trim()
       const arquivo_nome = (body.arquivo_nome || '').trim()
       const arquivo_base64 = (body.arquivo_base64 || '')
-      const data_vencimento = (body.data_vencimento || '').trim()
       const { data: existing } = await getSupabase().from('certificados_digitais').select('id').eq('id', cid).single()
       if (existing) {
-        const upd = { empresa_id, nome, tipo, titular, data_vencimento, updated_at: new Date().toISOString() }
+        const upd = { empresa_id, cnpj, data_inclusao, data_vencimento, updated_at: new Date().toISOString() }
         if (arquivo_nome) upd.arquivo_nome = arquivo_nome
         if (arquivo_base64) upd.arquivo_base64 = arquivo_base64
         await getSupabase().from('certificados_digitais').update(upd).eq('id', cid)
       } else {
-        await getSupabase().from('certificados_digitais').insert({ id: cid, empresa_id, nome, tipo, titular, arquivo_nome, arquivo_base64, data_vencimento })
+        await getSupabase().from('certificados_digitais').insert({ id: cid, empresa_id, cnpj, data_inclusao, data_vencimento, arquivo_nome, arquivo_base64 })
       }
       return json({ ok: true, id: cid })
     }
@@ -1143,11 +1267,10 @@ async function vercelHandler(event) {
       if (authErr) return authErr
       if (!validateCsrf(user, body.csrf_token)) return json({ ok: false, erro: 'CSRF invalido' }, 403)
       const upd = {}
-      if (body.nome !== undefined) upd.nome = (body.nome || '').trim()
-      if (body.tipo !== undefined) upd.tipo = (body.tipo || '').trim()
-      if (body.titular !== undefined) upd.titular = (body.titular || '').trim()
-      if (body.data_vencimento !== undefined) upd.data_vencimento = (body.data_vencimento || '').trim()
       if (body.empresa_id !== undefined) upd.empresa_id = (body.empresa_id || '').trim()
+      if (body.cnpj !== undefined) upd.cnpj = (body.cnpj || '').trim()
+      if (body.data_inclusao !== undefined) upd.data_inclusao = (body.data_inclusao || '').trim()
+      if (body.data_vencimento !== undefined) upd.data_vencimento = (body.data_vencimento || '').trim()
       if (body.arquivo_nome !== undefined) upd.arquivo_nome = (body.arquivo_nome || '').trim()
       if (body.arquivo_base64 !== undefined) upd.arquivo_base64 = body.arquivo_base64
       upd.updated_at = new Date().toISOString()
@@ -1631,7 +1754,7 @@ async function vercelHandler(event) {
           ['sectors', () => getSupabase().from('sectors').select('*').order('nome')],
           ['user_setores', () => getSupabase().from('user_setores').select('*')],
           ['tipos_certidao', () => getSupabase().from('tipos_certidao').select('*').order('nome')],
-          ['certificados_digitais', () => sq('certificados_digitais', 'id,empresa_id,nome,tipo,titular,arquivo_nome,data_vencimento,criado_em,updated_at,deleted_at').order('criado_em', { ascending: false })],
+          ['certificados_digitais', () => sq('certificados_digitais', 'id,empresa_id,cnpj,data_inclusao,data_vencimento,arquivo_nome,arquivo_base64,criado_em,updated_at,deleted_at').order('criado_em', { ascending: false })],
         ]
         const results = []
         for (const [label, fn] of queries) {

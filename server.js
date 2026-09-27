@@ -18,7 +18,9 @@ const MIME = {
   '.ico': 'image/x-icon',
 }
 
-const { default: apiHandler } = await import('./api/index.js')
+const apiPath = path.join(__dirname, 'api', 'index.js')
+const apiUrl = 'file:///' + apiPath.replace(/\\/g, '/') + '?t=' + Date.now()
+let apiHandler = (await import(apiUrl)).default
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`)

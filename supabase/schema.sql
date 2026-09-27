@@ -131,7 +131,8 @@ CREATE TABLE IF NOT EXISTS email_config (
   smtp_port INTEGER NOT NULL DEFAULT 587,
   email_remetente TEXT DEFAULT '',
   email_senha_enc TEXT DEFAULT '',
-  email_destinatario TEXT DEFAULT ''
+  email_destinatario TEXT DEFAULT '',
+  prazos TEXT
 );
 
 -- Sectors
