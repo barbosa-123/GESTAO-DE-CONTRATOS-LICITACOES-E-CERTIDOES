@@ -913,7 +913,10 @@
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
         <h2>Controle de Certidões</h2>
-        <button class="btn btn-primary" onclick="abrirModalCertidao()">+ Nova Certidão</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary" onclick="abrirModalCertidao()">+ Nova Certidão</button>
+          <button class="btn" id="btn-atualizar-certidoes" onclick="atualizarComFeedback(this, () => loadFromServer().then(() => renderCertidoes()))" title="Atualizar do servidor">🔄 Atualizar</button>
+        </div>
       </div>
       <div style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; align-items:flex-end;">
         <div class="form-group" style="min-width:220px;">
@@ -964,7 +967,10 @@
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
         <h2>Contrato Licitações</h2>
-        <button class="btn btn-primary" onclick="abrirModalLicitacao()">+ Nova Licitação</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary" onclick="abrirModalLicitacao()">+ Nova Licitação</button>
+          <button class="btn" id="btn-atualizar-licitacoes" onclick="atualizarComFeedback(this, () => loadFromServer().then(() => renderLicitacoes()))" title="Atualizar do servidor">🔄 Atualizar</button>
+        </div>
       </div>
       <div style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; align-items:flex-end;">
         <div class="form-group" style="min-width:220px;">
@@ -1006,7 +1012,10 @@
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
         <h2>Certificados Digitais</h2>
-        <button class="btn btn-primary" onclick="abrirModalCertificado()">+ Novo Certificado</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary" onclick="abrirModalCertificado()">+ Novo Certificado</button>
+          <button class="btn" id="btn-atualizar-certificados-pg" onclick="atualizarComFeedback(this, () => loadFromServer().then(() => renderPgCertificadosDigitais()))" title="Atualizar do servidor">🔄 Atualizar</button>
+        </div>
       </div>
       <div style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; align-items:flex-end;">
         <div class="form-group" style="min-width:220px;">
@@ -1049,8 +1058,8 @@
           <select id="mc-tipo" onchange="onTipoCertidaoChange()"><option value="">Selecione...</option></select>
         </div>
         <div class="form-group" style="position:relative;">
-          <label>UF</label>
-          <input type="text" id="mc-uf" placeholder="Selecione..." oninput="onUfInput()" onfocus="onUfFocus()" onkeydown="onUfKeydown(event)" autocomplete="off"/>
+          <label>UF *</label>
+          <input type="text" id="mc-uf" placeholder="Selecione..." oninput="onUfInput()" onfocus="onUfFocus()" onkeydown="onUfKeydown(event)" autocomplete="off" required/>
           <input type="hidden" id="mc-uf-val"/>
           <div id="mc-uf-dropdown" class="cidade-dropdown"></div>
         </div>
@@ -1061,12 +1070,12 @@
           <div id="mc-cidade-dropdown" class="cidade-dropdown"></div>
         </div>
         <div class="form-group">
-          <label>Data de Emissão</label>
-          <input type="date" id="mc-emissao"/>
+          <label>Data de Emissão *</label>
+          <input type="date" id="mc-emissao" required/>
         </div>
         <div class="form-group">
-          <label>Data de Validade</label>
-          <input type="date" id="mc-validade"/>
+          <label>Data de Validade *</label>
+          <input type="date" id="mc-validade" required/>
         </div>
         <div class="form-group">
           <label>Status</label>
@@ -1077,8 +1086,8 @@
           </select>
         </div>
         <div class="form-group">
-          <label>Documento (PDF/Imagem)</label>
-          <input type="file" id="mc-arquivo" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="background:#fff;padding:6px;cursor:pointer;"/>
+          <label>Documento (PDF/Imagem) *</label>
+          <input type="file" id="mc-arquivo" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="background:#fff;padding:6px;cursor:pointer;" required/>
         </div>
         <div class="form-group full">
           <label>Observações</label>
@@ -1129,16 +1138,16 @@
           <input type="number" id="ml-valor" placeholder="0,00" step="0.01"/>
         </div>
         <div class="form-group">
-          <label>Data Homologação</label>
-          <input type="date" id="ml-homologacao"/>
+          <label>Data Homologação *</label>
+          <input type="date" id="ml-homologacao" required/>
         </div>
         <div class="form-group">
-          <label>Início Vigência</label>
-          <input type="date" id="ml-inicio"/>
+          <label>Início Vigência *</label>
+          <input type="date" id="ml-inicio" required/>
         </div>
         <div class="form-group">
-          <label>Fim Vigência</label>
-          <input type="date" id="ml-fim"/>
+          <label>Fim Vigência *</label>
+          <input type="date" id="ml-fim" required/>
         </div>
         <div class="form-group">
           <label>Status</label>
@@ -1158,7 +1167,7 @@
         <div id="ml-arquivos-lista" style="margin-bottom:8px;"></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
           <div class="form-group" style="margin:0;flex:1;min-width:200px;">
-            <label style="font-size:0.8rem;">Novo Arquivo</label>
+            <label style="font-size:0.8rem;">Novo Arquivo *</label>
             <input type="file" id="ml-novo-arquivo" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="background:#fff;padding:6px;cursor:pointer;"/>
           </div>
           <div class="form-group" style="margin:0;min-width:120px;">
@@ -1352,6 +1361,7 @@
             </select>
           </div>
           <button class="btn btn-primary" onclick="abrirModalCertificado()">+ Novo Certificado</button>
+          <button class="btn" id="btn-atualizar-certificados-config" onclick="atualizarComFeedback(this, () => loadFromServer().then(() => renderCertificadosDigitais()))" title="Atualizar do servidor">🔄 Atualizar</button>
         </div>
         <div style="overflow-x:auto">
           <table>
@@ -1671,16 +1681,16 @@
         <input type="text" id="mcd-cnpj" oninput="mascaraCnpjCpf(this)" maxlength="18"/>
       </div>
       <div class="form-group">
-        <label>Data de Inclusão</label>
-        <input type="date" id="mcd-data-inclusao"/>
+        <label>Data de Inclusão *</label>
+        <input type="date" id="mcd-data-inclusao" required/>
       </div>
       <div class="form-group">
-        <label>Data de Validade</label>
-        <input type="date" id="mcd-vencimento"/>
+        <label>Data de Validade *</label>
+        <input type="date" id="mcd-vencimento" required/>
       </div>
       <div class="form-group full">
-        <label>Arquivo (.pdf, .jpg, .png)</label>
-        <input type="file" id="mcd-arquivo" accept=".pdf,.jpg,.jpeg,.png" style="background:#fff;padding:6px;cursor:pointer;"/>
+        <label>Arquivo (.pdf, .jpg, .png) *</label>
+        <input type="file" id="mcd-arquivo" accept=".pdf,.jpg,.jpeg,.png" style="background:#fff;padding:6px;cursor:pointer;" required/>
         <span id="mcd-arquivo-info" style="font-size:0.8rem;color:#666;margin-top:4px;display:none;"></span>
       </div>
     </div>
@@ -2994,6 +3004,11 @@ async function salvarCertificado() {
 
   if (!empresa_id) { mostrarToast('Selecione a empresa.', 'erro'); return; }
   if (!cnpj) { mostrarToast('Informe o CNPJ/CPF.', 'erro'); return; }
+  if (!data_inclusao) { mostrarToast('Informe a Data de Inclusão.', 'erro'); return; }
+  if (!data_vencimento) { mostrarToast('Informe a Data de Validade.', 'erro'); return; }
+  if (!fileInput.files || !fileInput.files[0]) { 
+    if (!_editandoCertificadoId) { mostrarToast('Anexe o arquivo do certificado.', 'erro'); return; }
+  }
 
   let arquivo_nome = '';
   let arquivo_base64 = '';
@@ -3587,6 +3602,29 @@ function formatDate(d) {
   return d;
 }
 
+function atualizarComFeedback(btn, acao) {
+  const originalText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Atualizando...';
+  btn.style.opacity = '0.7';
+
+  Promise.resolve(acao()).then(() => {
+    btn.innerHTML = '✅ Atualizado';
+    btn.style.opacity = '1';
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+    }, 1500);
+  }).catch(() => {
+    btn.innerHTML = '❌ Erro';
+    btn.style.opacity = '1';
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+    }, 2000);
+  });
+}
+
 // ===================== CERTIDOES =====================
 const TIPOS_CERTIDAO = [
   'Cartão CNPJ Ativo (Receita Federal)',
@@ -4066,20 +4104,26 @@ async function salvarCertidao() {
   const empresaId = document.getElementById('mc-empresa').value;
   const tipo = document.getElementById('mc-tipo').value;
   const cnpj = document.getElementById('mc-cnpj').value.trim();
+  const uf = document.getElementById('mc-uf-val').value;
+  const dataEmissao = document.getElementById('mc-emissao').value;
+  const dataValidade = document.getElementById('mc-validade').value;
+  const arquivoInput = document.getElementById('mc-arquivo');
+  
   if (!empresaId || !tipo || !cnpj) {
     mostrarToast('Preencha todos os campos obrigatorios (*): Empresa, Tipo e CNPJ.', 'erro'); return;
   }
+  if (!uf) { mostrarToast('Informe a UF.', 'erro'); return; }
+  if (!dataEmissao) { mostrarToast('Informe a Data de Emissão.', 'erro'); return; }
+  if (!dataValidade) { mostrarToast('Informe a Data de Validade.', 'erro'); return; }
+  if (!arquivoInput.files || !arquivoInput.files[0]) { mostrarToast('Anexe o arquivo da certidão.', 'erro'); return; }
+  
   const cnpjNumeros = cnpj.replace(/\D/g, '');
   if (cnpjNumeros.length !== 14 && cnpjNumeros.length !== 11) {
     mostrarToast('CNPJ/CPF invalido. Informe um CNPJ com 14 digitos ou CPF com 11 digitos.', 'erro'); return;
   }
-  const uf = document.getElementById('mc-uf-val').value;
   const cidade = document.getElementById('mc-cidade-val').value;
-  const dataEmissao = document.getElementById('mc-emissao').value;
-  const dataValidade = document.getElementById('mc-validade').value;
   const status = document.getElementById('mc-status').value;
   const obs = document.getElementById('mc-obs').value;
-  const arquivoInput = document.getElementById('mc-arquivo');
 
   let arquivo = null;
   if (arquivoInput.files && arquivoInput.files[0]) {
@@ -4299,9 +4343,21 @@ async function salvarLicitacao() {
   const numero = document.getElementById('ml-numero').value.trim();
   const objeto = document.getElementById('ml-objeto').value.trim();
   const cnpj = document.getElementById('ml-cnpj').value.trim();
+  const dataHomologacao = document.getElementById('ml-homologacao').value;
+  const dataInicio = document.getElementById('ml-inicio').value;
+  const dataFim = document.getElementById('ml-fim').value;
+  
   if (!numero || !objeto || !cnpj) {
     mostrarToast('Preencha todos os campos obrigatorios (*): No Licitacao, Objeto e CNPJ.', 'erro'); return;
   }
+  if (!dataHomologacao) { mostrarToast('Informe a Data de Homologação.', 'erro'); return; }
+  if (!dataInicio) { mostrarToast('Informe o Início da Vigência.', 'erro'); return; }
+  if (!dataFim) { mostrarToast('Informe o Fim da Vigência.', 'erro'); return; }
+  if (_licitacaoArquivosTemp.length === 0) { 
+    const editId = document.getElementById('ml-id').value;
+    if (!editId) { mostrarToast('Anexe pelo menos um arquivo.', 'erro'); return; }
+  }
+  
   const cnpjNumeros = cnpj.replace(/\D/g, '');
   if (cnpjNumeros.length !== 14 && cnpjNumeros.length !== 11) {
     mostrarToast('CNPJ/CPF invalido. Informe um CNPJ com 14 digitos ou CPF com 11 digitos.', 'erro'); return;
@@ -4310,9 +4366,6 @@ async function salvarLicitacao() {
   const edital = document.getElementById('ml-edital').value;
   const empresaId = document.getElementById('ml-empresa').value || null;
   const valor = parseFloat(document.getElementById('ml-valor').value) || 0;
-  const dataHomologacao = document.getElementById('ml-homologacao').value;
-  const dataInicio = document.getElementById('ml-inicio').value;
-  const dataFim = document.getElementById('ml-fim').value;
   const status = document.getElementById('ml-status').value;
   const obs = document.getElementById('ml-obs').value;
 
@@ -4655,9 +4708,9 @@ function showPage(id, btn) {
   document.getElementById('config-dropdown').classList.remove('show');
 
   if (id === 'dashboard') renderDashboard();
-  if (id === 'certidoes') { popularFiltroEmpresaCertidoes(); popularFiltroUfCertidoes(); popularFiltroTipoCertidoes(); renderCertidoes(); }
-  if (id === 'licitacoes') { popularFiltroEmpresaLicitacoes(); renderLicitacoes(); }
-  if (id === 'certificados-digitais') { popularPgCdEmpresaFiltro(); renderPgCertificadosDigitais(); }
+  if (id === 'certidoes') { popularFiltroEmpresaCertidoes(); popularFiltroUfCertidoes(); popularFiltroTipoCertidoes(); loadFromServer().then(() => renderCertidoes()); }
+  if (id === 'licitacoes') { popularFiltroEmpresaLicitacoes(); loadFromServer().then(() => renderLicitacoes()); }
+  if (id === 'certificados-digitais') { popularPgCdEmpresaFiltro(); loadFromServer().then(() => renderPgCertificadosDigitais()); }
   if (id === 'configuracao') {
     const activeSub = document.querySelector('.config-section.active');
     if (!activeSub) showConfigSub('usuarios');
@@ -5947,7 +6000,7 @@ if (resetToken) {
 
 // Sincronizacao em tempo real: busca do servidor a cada 30 segundos
 let _syncRunning = false;
-const SYNC_ENABLED = true;
+const SYNC_ENABLED = false;
 let _lastSyncAt = localStorage.getItem('lastSyncAt') || null;
 let _pendingSync = false;
 let _serverOffset = parseInt(localStorage.getItem('serverOffset') || '0');
