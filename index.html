@@ -6261,9 +6261,6 @@ function enviarAlertasCertidoes() {
   const msg = document.getElementById('cfg-msg');
   btn.disabled = true; btn.textContent = 'Enviando...';
   getCsrfToken().then(() => {
-  const empresas = getEmpresas().map(e => ({ id: e.id, nome: e.nome }));
-  const sectors = getSectors().map(s => ({ id: s.id, nome: s.nome }));
-  const certidoes = getCertidoes();
   const destinatarios = getDestinatarios().map(d => ({
     email: d.email,
     nome: d.nome || '',
@@ -6273,7 +6270,7 @@ function enviarAlertasCertidoes() {
   fetch('/api/enviar-alertas-certidoes', {
     method:'POST',
     headers: Object.assign({'Content-Type':'application/json'}, csrfHeaders()),
-    body:JSON.stringify({ empresas, sectors, certidoes, destinatarios })
+    body:JSON.stringify({ destinatarios })
   }).then(r=>r.json()).then(d=>{
     if(d.ok) { msg.className = 'ok-box'; msg.textContent = d.msg || 'E-mail enviado!'; }
     else { msg.className = 'warn-box'; msg.textContent = d.erro || 'Erro ao enviar'; }
@@ -6292,9 +6289,6 @@ function enviarAlertasLicitacoes() {
   const msg = document.getElementById('cfg-msg');
   btn.disabled = true; btn.textContent = 'Enviando...';
   getCsrfToken().then(() => {
-  const empresas = getEmpresas().map(e => ({ id: e.id, nome: e.nome }));
-  const sectors = getSectors().map(s => ({ id: s.id, nome: s.nome }));
-  const licitacoes = getLicitacoes();
   const destinatarios = getDestinatarios().map(d => ({
     email: d.email,
     nome: d.nome || '',
@@ -6304,7 +6298,7 @@ function enviarAlertasLicitacoes() {
   fetch('/api/enviar-alertas-licitacoes', {
     method:'POST',
     headers: Object.assign({'Content-Type':'application/json'}, csrfHeaders()),
-    body:JSON.stringify({ empresas, sectors, licitacoes, destinatarios })
+    body:JSON.stringify({ destinatarios })
   }).then(r=>r.json()).then(d=>{
     if(d.ok) { msg.className = 'ok-box'; msg.textContent = d.msg || 'E-mail enviado!'; }
     else { msg.className = 'warn-box'; msg.textContent = d.erro || 'Erro ao enviar'; }
