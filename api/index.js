@@ -2,7 +2,11 @@ import { createClient } from '@supabase/supabase-js'
 import jwt from 'jsonwebtoken'
 import nodemailer from 'nodemailer'
 import crypto from 'crypto'
+import fs from 'fs'
+import nodePath from 'path'
+import { fileURLToPath } from 'url'
 
+const __dirname = nodePath.dirname(fileURLToPath(import.meta.url))
 const JWT_SECRET = process.env.JWT_SECRET
 
 const forgotPasswordAttempts = new Map()
@@ -37,38 +41,93 @@ function getSupabase() {
 
 // ─── HELPERS ───────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT_ASSISTENTE = `Voce e o Assistente Virtual do sistema GESTAO DE CONTRATOS LICITACOES.
-Seu papel e ajudar o usuario a entender e usar o sistema. Responda SEMPRE em portugues brasileiro, de forma simples e direta.
-SOBRE O SISTEMA: Aplicacao web para gerenciar contratos, pagamentos e vencimentos de empresas.
-TELAS: 1) Dashboard - resumo com cards e vencimentos. 2) Contratos - lista e gerenciamento. 3) Novo Contrato - formulario de cadastro. 4) Pagamentos - lista de parcelas. 5) Configuracao - Usuarios, Empresas, Tipos, Destinatarios, E-mail.
-Cadastrar contrato: clique em "+ Novo Contrato", preencha obrigatorios (Numero, Tipo, Empresa, Objeto, Fornecedor, Valor, Datas), salve.
-Registrar pagamento: va em Pagamentos, clique Registrar, informe data, valor, forma de pagamento, confirme.
-Aditivo: abra detalhe do contrato, clique Registrar Aditivo, preencha dados, salve.
-Email: configure SMTP em Configuracao > E-mail. Envio manual pelos botões e automatico as 10h no servidor local.
-Usuarios: Configuracao > Usuarios, crie, edite, defina perfil e empresas.
-Empresas: Configuracao > Empresas, cadastre nome e CNPJ.`
+const SYSTEM_PROMPT_ASSISTENTE = `Voce e o Assistente Virtual do sistema GESTAO DE CONTRATOS, LICITACOES E CERTIDOES.
+Seu papel e ajudar o usuario a entender e usar o sistema. Responda SEMPRE em portugues brasileiro, de forma simples, direta e objetiva.
+Nao invente funcionalidades que nao existam. Se nao souber, diga que nao tem essa informacao e sugira onde procurar.
+
+== SISTEMA ==
+Aplicacao web (SPA) para gerenciar CERTIDOES, LICITACOES e CERTIFICADOS DIGITAIS de empresas.
+Telas no menu superior: Dashboard | Certidoes | Contrato Licitacoes | Certificados Digitais | Configuracao.
+
+== DASHBOARD ==
+Cards de resumo (certidoes vencendo/vencidas, licitacoes em andamento/vencidas, certificados digitais) e graficos.
+Filtro por Grupo de Empresas. Clique nos cards para ir para a tela correspondente.
+
+== CERTIDOES ==
+Clique em "Nova Certidao" (botao azul). Campos: Empresa*, Tipo*, CNPJ/CPF*, UF*, Cidade, Data de Emissao*, Validade* (ou "sem validade"), Status, Observacoes e Arquivo (obrigatorio).
+Dica: ao digitar o CNPJ (14 digitos), o sistema procura a empresa cadastrada e preenche Empresa e UF automaticamente.
+Status e calculado automaticamente: Valida / Vencendo / Vencida.
+Exclusao: apenas administrador. A tabela tem filtros por empresa, UF, tipo e status, paginacao e exportacao CSV.
+Status possiveis: pendente, valida, vencendo, vencida (calculado pela data de validade).
+
+== LICITACOES (Contrato Licitacoes) ==
+Clique em "Nova Licitacao". Campos: Numero*, Nome, CNPJ*, Edital, UF, Cidade, Objeto*, Empresa Vencedora, Valor, Indice de Reajuste, Data de Homologacao*, Vigencia (inicio* e fim*), Status, Observacoes e Arquivos (obrigatorio ao criar, multiplos).
+Ao digitar o CNPJ, preenche e bloqueia a Empresa Vencedora automaticamente.
+Cada licitacao tem ADITIVOS: abra a licitacao e clique em Registrar Aditivo.
+Exclusao: apenas administrador (exclusao definitiva). Qualquer usuario com permissao pode inativar/reativar.
+Filtros: empresa, status, numero da licitacao.
+
+== CERTIFICADOS DIGITAIS ==
+Clique em "Novo Certificado Digital". Campos: CNPJ/CPF*, Empresa*, UF, Data de Inclusao*, Data de Validade*, Senha do certificado (fica visivel, com botao Copiar) e Arquivo (.pdf/.jpg/.png).
+O CNPJ preenche a Empresa e a UF automaticamente.
+A senha e guardada para consulta de quem precisar instalar o certificado em outra maquina. Ha um botao "Senha" na lista para ver e copiar.
+Exclusao: apenas administrador. Badge mostra "Vencido" ou "Vence em X dias".
+
+== CONFIGURACAO (submenu) ==
+- Minha Conta: altere sua propria senha.
+- Usuarios: crie/edite usuarios, defina perfil (admin, setor_admin ou usuario) e quais empresas e setores cada um acessa. Apenas admin global cria outros admins.
+- Grupos de Empresas: agrupe empresas para facilitar filtros e permissoes.
+- Empresas: cadastre nome e CNPJ (sem duplicidade). Pode inativar sem excluir.
+- Setores e Tipos de Certidao: cadastros auxiliares com inativar.
+- Destinatarios: quem recebe os alertas por e-mail (email, nome, empresas, setores, tipos de alerta).
+- E-mail: configure SMTP (servidor, porta, remetente, senha) e prazos de alerta. Botoes de envio manual.
+- Historico: registro de acoes (auditoria).
+
+== PERMISSOES ==
+Perfis: admin (acesso total), setor_admin (restrito aos seus setores), usuario (permissoes basicas).
+Exclusoes (certidoes, licitacoes, certificados, usuarios) normalmente exigem admin.
+O menu e os botoes se ajustam conforme a permissao do usuario.
+
+== RECURSOS ==
+- Sino de notificacoes: alertas de vencimentos.
+- Tema claro/escuro: icone de lua/sol no canto superior direito.
+- Exportacao CSV (Excel): botoes de exportar nas tabelas.
+- Anexos: armazenados no sistema; PDFs podem ser visualizados, baixados e impressos.
+- Senha esquecida: use "Esqueci a senha" na tela de login.
+
+Responda duvidas de uso do sistema. Para problemas tecnicos (servidor, banco), sugira falar com o administrador.`
 
 function respostaOffline(pergunta) {
   const p = pergunta.toLowerCase()
-  if (['contrato', 'cadastr', 'novo', 'criar'].some(w => p.includes(w)))
-    return 'Para cadastrar um contrato, clique em "+ Novo Contrato" no menu. Preencha os campos obrigatorios (Numero, Tipo, Empresa, Objeto, Fornecedor, Valor, Datas) e salve.'
-  if (['pagamento', 'parcela'].some(w => p.includes(w)))
-    return 'Para registrar um pagamento, va em Pagamentos, clique em "Registrar" ao lado do pagamento pendente, informe data, valor e forma de pagamento, e confirme.'
-  if (['editar', 'alterar'].some(w => p.includes(w)))
-    return 'Para editar, va em Contratos, clique no icone de editar (lapis), altere os dados e salve.'
-  if (['aditivo', 'prorrog'].some(w => p.includes(w)))
-    return 'Para adicionar um aditivo, abra o detalhe do contrato e clique em "Registrar Aditivo". Preencha os dados e salve.'
-  if (['email', 'smtp', 'alerta', 'lembrete'].some(w => p.includes(w)))
-    return 'Configure o e-mail em Configuracao > E-mail. Informe servidor SMTP, porta, email remetente e senha. Use os botoes para envio manual.'
-  if (['usuario', 'senha', 'login'].some(w => p.includes(w)))
-    return 'Para gerenciar usuarios, va em Configuracao > Usuarios. Crie, edite, defina perfil (admin/usuario) e empresas com acesso.'
-  if (['empresa', 'cnpj'].some(w => p.includes(w)))
-    return 'Para cadastrar empresas, va em Configuracao > Empresas. Informe nome e CNPJ.'
-  if (['dashboard', 'inicio', 'resumo'].some(w => p.includes(w)))
-    return 'O Dashboard mostra resumo com cards, proximos vencimentos e contratos. Use os filtros por fornecedor/CNPJ e data.'
+  if (['certidao', 'certidão', 'certidoes', 'certidões'].some(w => p.includes(w)))
+    return 'Para cadastrar uma certidao, clique em "Nova Certidao" no menu Certidoes. Preencha Empresa, Tipo, CNPJ, UF, cidades, datas e anexe o arquivo. Ao digitar o CNPJ, a empresa e a UF sao preenchidas automaticamente. A exclusao so pode ser feita por administrador.'
+  if (['licitacao', 'licitações', 'licitacoe', 'edital', 'aditivo'].some(w => p.includes(w)))
+    return 'Para cadastrar uma licitacao, va em "Contrato Licitacoes" e clique em "Nova Licitacao". Preencha Numero, CNPJ, Objeto, datas de homologacao e vigencia, e anexe os arquivos. Cada licitacao pode ter aditivos (botao dentro da licitacao). Exclusao apenas de administrador.'
+  if (['certificado digital', 'certificado', 'senha do certificado'].some(w => p.includes(w)))
+    return 'Em "Certificados Digitais", clique em "Novo Certificado Digital". Informe o CNPJ (preenche empresa e UF), datas, senha do certificado e anexe o arquivo. A senha fica visivel e pode ser copiada com o botao "Copiar" ou pelo botao "Senha" na lista.'
+  if (['cnpj', 'empresa', 'cadastre a empresa'].some(w => p.includes(w)))
+    return 'Para cadastrar empresas, va em Configuracao > Empresas. Informe nome e CNPJ (sem duplicidade). CNPJ e CPF sao aceitos nos cadastros. Voce pode inativar uma empresa sem exclui-la.'
+  if (['usuario', 'senha', 'login', 'perfil', 'permissao'].some(w => p.includes(w)))
+    return 'Usuarios: Configuracao > Usuarios. La voce cria usuarios, define o perfil (admin, setor_admin ou usuario) e quais empresas/setores cada um acessa. Para alterar sua propria senha: Configuracao > Minha Conta. Senha esquecida: use "Esqueci a senha" no login.'
+  if (['email', 'smtp', 'alerta', 'lembrete', 'notificacao', 'destinatario'].some(w => p.includes(w)))
+    return 'Configure o e-mail em Configuracao > E-mail (servidor SMTP, porta, remetente, senha). Os destinatarios dos alertas sao cadastrados em Configuracao > Destinatarios. Ha botoes de envio manual de alertas.'
+  if (['dashboard', 'inicio', 'resumo', 'grafico'].some(w => p.includes(w)))
+    return 'O Dashboard mostra cards de resumo (certidoes vencendo/vencidas, licitacoes, certificados digitais) e graficos. Use o filtro por Grupo de Empresas para concentrar a visao.'
   if (['tema', 'escuro', 'claro'].some(w => p.includes(w)))
     return 'Para mudar o tema, clique no icone da lua/sol no canto superior direito do header.'
-  return 'Posso ajudar com: cadastro de contratos, pagamentos, aditivos, empresas, usuarios, configuracao de e-mail, uso do dashboard e navegacao no sistema.'
+  if (['exportar', 'excel', 'csv', 'planilha'].some(w => p.includes(w)))
+    return 'Nas tabelas de Certidoes, Licitacoes e Certificados Digitais ha botoes de exportacao CSV (abre no Excel).'
+  if (['historico', 'auditoria', 'log'].some(w => p.includes(w)))
+    return 'O historico de acoes fica em Configuracao > Historico. La voce ve quem fez o que e quando.'
+  if (['grupo', 'grupos'].some(w => p.includes(w)))
+    return 'Grupos de Empresas: Configuracao > Grupos de Empresas. Agrupe empresas para facilitar filtros no Dashboard e permissoes de usuarios.'
+  if (['setor', 'setores'].some(w => p.includes(w)))
+    return 'Setores: Configuracao > Setores. Cadastre os setores da empresa; eles sao usados para restringir acesso de usuarios e destinatarios de alertas.'
+  if (['vencendo', 'vencida', 'vencido', 'alerta de vencimento'].some(w => p.includes(w)))
+    return 'O sistema calcula automaticamente o status de certidoes e certificados digitais (Valida, Vencendo, Vencida) com base na data de validade. O sino de notificacoes e o Dashboard mostram os proximos vencimentos.'
+  if (['filtro', 'filtrar', 'busca', 'pesquisar'].some(w => p.includes(w)))
+    return 'Cada tela de listagem (Certidoes, Licitacoes, Certificados Digitais) tem filtros no topo (por empresa, UF, tipo, status, etc.). Use-os para encontrar registros rapidamente.'
+  return 'Posso ajudar com: certidoes, licitacoes, certificados digitais, empresas, usuarios e permissoes, grupos de empresas, setores, destinatarios de e-mail, alertas, dashboard, filtros e exportacao. Sua pergunta e sobre qual assunto?'
 }
 
 function json(data, status = 200, extraHeaders = {}) {
@@ -184,18 +243,113 @@ function validateCsrf(user, bodyCsrf) {
   return sessionCsrf === bodyCsrf
 }
 
-function requireAdmin(user) {
-  if (!user || (user.role !== 'admin' && user.role !== 'setor_admin')) {
-    return json({ ok: false, erro: 'Acesso restrito ao administrador' }, 403)
+// ─── MATRIZ DE PERMISSOES (role_permissions) ─────────────────────────────
+// A matriz resource/action e a fonte da verdade das rotas administrativas.
+// Os atalhos legados continuam valendo: 'admin' passa em tudo e 'setor_admin'
+// mantem o acesso administrativo que ja tinha (compatibilidade com roles
+// criadas antes da matriz). Demais papeis passam pela matriz.
+const ROLE_PERM_CACHE_MS = 60 * 1000
+const rolePermCache = new Map()
+
+function clearRolePermCache(roleId) {
+  if (roleId) rolePermCache.delete(roleId)
+  else rolePermCache.clear()
+}
+
+async function getRolePerms(roleId) {
+  const hit = rolePermCache.get(roleId)
+  if (hit && (Date.now() - hit.ts) < ROLE_PERM_CACHE_MS) return hit.perms
+  let perms = []
+  try {
+    const { data, error } = await getSupabase().from('role_permissions').select('*').eq('role_id', roleId)
+    if (!error && data) perms = data.filter(p => !p.deleted_at)
+  } catch (e) {
+    console.error('[PERM] Erro ao ler role_permissions:', e.message)
+  }
+  rolePermCache.set(roleId, { perms, ts: Date.now() })
+  return perms
+}
+
+// Rotas administrativas nao tem contexto de empresa, entao so valem
+// permissoes atribuidas sem escopo (empresa_id e company_group_id vazios).
+async function temPermissaoRole(roleId, resource, action) {
+  if (!roleId) return false
+  const perms = await getRolePerms(roleId)
+  if (perms.some(p => p.resource === '*' && p.action === '*')) return true
+  return perms.some(p =>
+    p.resource === resource &&
+    p.action === action &&
+    !p.empresa_id &&
+    !p.company_group_id
+  )
+}
+
+// Papel efetivo lido do banco: o JWT nao carrega role_id e o campo legado
+// `users.role` pode estar defasado quando a role e trocada por /user-role.
+async function getEffectiveRole(user) {
+  try {
+    const { data } = await getSupabase().from('users').select('role, role_id').eq('id', user.id).single()
+    if (data) return { role: legacyRoleFromRoleId(data.role_id, data.role), roleId: data.role_id || null }
+  } catch (e) {
+    console.error('[PERM] Erro ao ler papel do usuario:', e.message)
+  }
+  return { role: user.role || null, roleId: null }
+}
+
+async function requirePerm(user, resource, action) {
+  if (!user) return json({ ok: false, erro: 'Nao autenticado' }, 401)
+  const { role, roleId } = await getEffectiveRole(user)
+  if (role === 'admin') return null
+  if (role === 'setor_admin') return null
+  if (roleId && await temPermissaoRole(roleId, resource, action)) return null
+  return json({ ok: false, erro: `Acesso restrito: permissao ${resource}.${action} nao concedida` }, 403)
+}
+
+// Exige administrador global ou a permissao correspondente na matriz.
+// (Substitui o antigo requireGlobalAdmin, que so aceitava role 'admin'.)
+async function requireGlobalPerm(user, resource, action) {
+  if (!user) return json({ ok: false, erro: 'Nao autenticado' }, 401)
+  const { role, roleId } = await getEffectiveRole(user)
+  if (role === 'admin') return null
+  if (roleId && await temPermissaoRole(roleId, resource, action)) return null
+  return json({ ok: false, erro: `Acesso restrito: permissao ${resource}.${action} nao concedida` }, 403)
+}
+
+// Atribuir papeis de administrador so pode quem ja e administrador global:
+// ambos ('role_admin' e 'role_admin_setor') pulam os guards da matriz, entao
+// quem so tem permissoes nao pode se promover por meio deles.
+async function requirePermParaRole(user, roleId) {
+  if (roleId !== 'role_admin' && roleId !== 'role_admin_setor') return null
+  const { role } = await getEffectiveRole(user)
+  if (role === 'admin') return null
+  return json({ ok: false, erro: 'Somente o administrador global pode atribuir papeis de administrador' }, 403)
+}
+
+// Quem so tem a matriz de permissoes nao altera (nem rebaixa) um
+// administrador global: protege o admin principal de ser despromovido.
+async function requirePermToManageUser(user, targetUserId) {
+  const me = await getEffectiveRole(user)
+  if (me.role === 'admin') return null
+  try {
+    const { data } = await getSupabase().from('users').select('role, role_id').eq('id', targetUserId).single()
+    if (data && legacyRoleFromRoleId(data.role_id, data.role) === 'admin') {
+      return json({ ok: false, erro: 'Somente o administrador global pode alterar um administrador' }, 403)
+    }
+  } catch (e) {
+    console.error('[PERM] Erro ao verificar usuario alvo:', e.message)
   }
   return null
 }
 
-function requireGlobalAdmin(user) {
-  if (!user || user.role !== 'admin') {
-    return json({ ok: false, erro: 'Acesso restrito ao administrador global' }, 403)
-  }
-  return null
+// O campo legado `users.role` aceita apenas 'admin' | 'setor_admin' | outros.
+// Nunca gravar o id da role (ex.: 'role_admin') neste campo: getEffectiveRole()
+// e o menu/tratamento de telas derivam o papel do usuário daqui (com fallback
+// para a role_id), então valores fora da lista deixam o usuário sem papel.
+function legacyRoleFromRoleId(roleId, fallback) {
+  if (roleId === 'role_admin') return 'admin'
+  if (roleId === 'role_admin_setor') return 'setor_admin'
+  if (roleId) return 'usuario'
+  return (fallback || 'user').trim() || 'user'
 }
 
 function requireAuth(user) {
@@ -634,12 +788,12 @@ async function vercelHandler(event) {
       if (!user) return json({ ok: false, user: null }, 401)
       let dbUser = null
       try {
-        const result = await getSupabase().from('users').select('id, username, full_name, role').eq('id', user.id).single()
+        const result = await getSupabase().from('users').select('id, username, full_name, role, role_id, email, active').eq('id', user.id).single()
         dbUser = result.data
       } catch (e) {
         console.error('Supabase /me query error:', e.message)
       }
-      const userData = dbUser || { id: user.id, username: user.username, full_name: user.full_name, role: user.role }
+      const userData = dbUser || { id: user.id, username: user.username, full_name: user.full_name, role: user.role, role_id: user.role_id || null }
       return json({ ok: true, user: userData, csrf_token: csrfToken })
     }
 
@@ -690,7 +844,7 @@ async function vercelHandler(event) {
       try { await audit(dbUser.id, 'LOGIN', 'user', String(dbUser.id), `Login: ${dbUser.username}`) } catch {}
       return json({
         ok: true,
-        user: { id: dbUser.id, username: dbUser.username, full_name: dbUser.full_name, role: dbUser.role },
+        user: { id: dbUser.id, username: dbUser.username, full_name: dbUser.full_name, role: dbUser.role, role_id: dbUser.role_id || null, email: dbUser.email || '', active: dbUser.active },
         csrf_token: sessionCsrf
       }, 200, {
         'Set-Cookie': setCookie('token', token, { secure: isSecure, maxAge: 28800 })
@@ -1089,16 +1243,16 @@ async function vercelHandler(event) {
     if (route === 'users' && httpMethod === 'GET') {
       const authErr = requireAuth(user)
       if (authErr) return authErr
-      const adminErr = requireAdmin(user)
+      const adminErr = await requirePerm(user, 'usuarios', 'read')
       if (adminErr) return adminErr
-      const { data: users } = await getSupabase().from('users').select('id, username, full_name, email, role, active, created_at').order('id')
+      const { data: users } = await getSupabase().from('users').select('id, username, full_name, email, role, role_id, active, created_at').order('id')
       return json(users)
     }
 
     if (route === 'users' && httpMethod === 'POST') {
       const authErr = requireAuth(user)
       if (authErr) return authErr
-      const adminErr = requireAdmin(user)
+      const adminErr = await requirePerm(user, 'usuarios', 'create')
       if (adminErr) return adminErr
       if (!validateCsrf(user, body.csrf_token)) {
         return json({ ok: false, erro: 'CSRF invalido' }, 403)
@@ -1107,7 +1261,10 @@ async function vercelHandler(event) {
       const fullName = (body.full_name || '').trim()
       const email = (body.email || '').trim()
       const password = (body.password || '').trim()
-      const role = (body.role || 'user').trim()
+      const roleId = (body.role_id || '').trim()
+      const roleErr = await requirePermParaRole(user, roleId)
+      if (roleErr) return roleErr
+      const role = legacyRoleFromRoleId(roleId, body.role)
       if (!username || !fullName || !password) {
         return json({ ok: false, erro: 'Preencha todos os campos' }, 400)
       }
@@ -1121,9 +1278,9 @@ async function vercelHandler(event) {
       const { data: existing } = await getSupabase().from('users').select('id').eq('username', username).single()
       if (existing) return json({ ok: false, erro: 'Usuario ja existe' }, 400)
       const hash = await hashPassword(password)
-      const { data: newUser, error: insertErr } = await getSupabase().from('users').insert({
-        username, full_name: fullName, email, password_hash: hash, role
-      }).select().single()
+      const insertData = { username, full_name: fullName, email, password_hash: hash, role }
+      if (roleId) insertData.role_id = roleId
+      const { data: newUser, error: insertErr } = await getSupabase().from('users').insert(insertData).select().single()
       if (insertErr) return json({ ok: false, erro: 'Erro ao criar usuario: ' + insertErr.message }, 500)
       if (!newUser) return json({ ok: false, erro: 'Erro ao criar usuario' }, 500)
       await audit(user.id, 'CREATE', 'user', '', `Usuario ${username} criado por ${user.username}`)
@@ -1133,7 +1290,7 @@ async function vercelHandler(event) {
     if (parts[0] === 'users' && parts[1] && httpMethod === 'PUT') {
       const authErr = requireAuth(user)
       if (authErr) return authErr
-      const adminErr = requireAdmin(user)
+      const adminErr = await requirePerm(user, 'usuarios', 'update')
       if (adminErr) return adminErr
       if (!validateCsrf(user, body.csrf_token)) {
         return json({ ok: false, erro: 'CSRF invalido' }, 403)
@@ -1141,12 +1298,23 @@ async function vercelHandler(event) {
       const uid = parseInt(parts[1])
       const fullName = (body.full_name || '').trim()
       const email = (body.email || '').trim()
-      const role = (body.role || 'user').trim()
+      const roleId = (body.role_id || '').trim()
+      const manageErr = await requirePermToManageUser(user, uid)
+      if (manageErr) return manageErr
+      if (roleId) {
+        const { data: targetNow } = await getSupabase().from('users').select('role_id').eq('id', uid).single()
+        if ((targetNow && targetNow.role_id) !== roleId) {
+          const roleErr = await requirePermParaRole(user, roleId)
+          if (roleErr) return roleErr
+        }
+      }
+      const role = legacyRoleFromRoleId(roleId, body.role)
       const active = body.active !== false ? 1 : 0
       if (email && !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email)) {
         return json({ ok: false, erro: 'Email invalido' }, 400)
       }
       const upd = { full_name: fullName, email, role, active }
+      if (roleId) upd.role_id = roleId
       if (body.password && body.password.trim()) {
         const pwd = body.password.trim()
         if (pwd.length < 8) return json({ ok: false, erro: 'Senha deve ter no minimo 8 caracteres.' }, 400)
@@ -1163,13 +1331,15 @@ async function vercelHandler(event) {
     if (parts[0] === 'users' && parts[1] && httpMethod === 'DELETE') {
       const authErr = requireAuth(user)
       if (authErr) return authErr
-      const adminErr = requireAdmin(user)
+      const adminErr = await requirePerm(user, 'usuarios', 'delete')
       if (adminErr) return adminErr
       if (!validateCsrf(user, body.csrf_token)) {
         return json({ ok: false, erro: 'CSRF invalido' }, 403)
       }
       const uid = parseInt(parts[1])
       if (uid === 1) return json({ ok: false, erro: 'Nao e possivel inativar o usuario admin principal.' }, 400)
+      const manageErr = await requirePermToManageUser(user, uid)
+      if (manageErr) return manageErr
       await getSupabase().from('users').update({ active: 0 }).eq('id', uid)
       await audit(user.id, 'INACTIVATE', 'user', String(uid), `Usuario ${uid} inativado por ${user.username}`)
       return json({ ok: true })
@@ -1191,12 +1361,22 @@ async function vercelHandler(event) {
       const nome = (body.nome || '').trim()
       if (!nome) return json({ ok: false, erro: 'Nome da empresa e obrigatorio.' }, 400)
       const cnpj = (body.cnpj || '').trim()
+      const ufCnpj = (body.uf_cnpj || '').trim().toUpperCase()
+      const cnpjNumeros = cnpj.replace(/\D/g, '')
       const { data: existing } = await getSupabase().from('companies').select('id').eq('id', cid).single()
       const active = body.active !== undefined ? (body.active ? 1 : 0) : 1
       if (existing) {
-        await getSupabase().from('companies').update({ nome, cnpj, active }).eq('id', cid)
+        const { error } = await getSupabase().from('companies').update({ nome, cnpj, uf_cnpj: ufCnpj, active }).eq('id', cid)
+        if (error) return json({ ok: false, erro: 'Erro ao atualizar empresa: ' + error.message }, 500)
       } else {
-        await getSupabase().from('companies').insert({ id: cid, nome, cnpj, active })
+        // Duplicidade por CNPJ (ignora formatacao e acentos de nome)
+        if (cnpjNumeros.length >= 11) {
+          const { data: todas } = await getSupabase().from('companies').select('id, nome, cnpj')
+          const dup = (todas || []).find(t => (t.cnpj || '').replace(/\D/g, '') === cnpjNumeros)
+          if (dup) return json({ ok: false, erro: 'Ja existe empresa cadastrada com este CNPJ: ' + dup.nome }, 400)
+        }
+        const { error } = await getSupabase().from('companies').insert({ id: cid, nome, cnpj, uf_cnpj: ufCnpj, active })
+        if (error) return json({ ok: false, erro: 'Erro ao criar empresa: ' + error.message }, 500)
       }
       return json({ ok: true, id: cid })
     }
@@ -1211,14 +1391,16 @@ async function vercelHandler(event) {
       if (body.active !== undefined) upd.active = body.active ? 1 : 0
       if (body.nome !== undefined) upd.nome = (body.nome || '').trim()
       if (body.cnpj !== undefined) upd.cnpj = (body.cnpj || '').trim()
-      await getSupabase().from('companies').update(upd).eq('id', parts[1])
+      if (body.uf_cnpj !== undefined) upd.uf_cnpj = (body.uf_cnpj || '').trim().toUpperCase()
+      const { error } = await getSupabase().from('companies').update(upd).eq('id', parts[1])
+      if (error) return json({ ok: false, erro: 'Erro ao atualizar empresa: ' + error.message }, 500)
       return json({ ok: true })
     }
 
     if (parts[0] === 'companies' && parts[1] && httpMethod === 'DELETE') {
       const authErr = requireAuth(user)
       if (authErr) return authErr
-      const adminErr = requireAdmin(user)
+      const adminErr = await requirePerm(user, 'empresas', 'delete')
       if (adminErr) return adminErr
       if (!validateCsrf(user, body.csrf_token)) {
         return json({ ok: false, erro: 'CSRF invalido' }, 403)
@@ -1245,6 +1427,8 @@ async function vercelHandler(event) {
       const cid = body.id || crypto.randomUUID()
       const empresa_id = (body.empresa_id || '').trim()
       const cnpj = (body.cnpj || '').trim()
+      const uf = (body.uf || '').trim().toUpperCase()
+      const senha = body.senha || ''
       if (!empresa_id || !cnpj) return json({ ok: false, erro: 'empresa_id e cnpj sao obrigatorios' }, 400)
       const data_inclusao = (body.data_inclusao || '').trim()
       const data_vencimento = (body.data_vencimento || '').trim()
@@ -1252,12 +1436,22 @@ async function vercelHandler(event) {
       const arquivo_base64 = (body.arquivo_base64 || '')
       const { data: existing } = await getSupabase().from('certificados_digitais').select('id').eq('id', cid).single()
       if (existing) {
-        const upd = { empresa_id, cnpj, data_inclusao, data_vencimento, updated_at: new Date().toISOString() }
+        const upd = { empresa_id, cnpj, uf, senha, data_inclusao, data_vencimento, updated_at: new Date().toISOString() }
         if (arquivo_nome) upd.arquivo_nome = arquivo_nome
         if (arquivo_base64) upd.arquivo_base64 = arquivo_base64
-        await getSupabase().from('certificados_digitais').update(upd).eq('id', cid)
+        let { error: updErr } = await getSupabase().from('certificados_digitais').update(upd).eq('id', cid)
+        if (updErr && (updErr.code === '42703' || /column .*(uf|senha)/i.test(updErr.message || ''))) {
+          console.warn('certificados_digitais sem coluna uf/senha; regravando sem elas:', updErr.message)
+          delete upd.uf
+          delete upd.senha
+          await getSupabase().from('certificados_digitais').update(upd).eq('id', cid)
+        }
       } else {
-        await getSupabase().from('certificados_digitais').insert({ id: cid, empresa_id, cnpj, data_inclusao, data_vencimento, arquivo_nome, arquivo_base64 })
+        let { error: insErr } = await getSupabase().from('certificados_digitais').insert({ id: cid, empresa_id, cnpj, uf, senha, data_inclusao, data_vencimento, arquivo_nome, arquivo_base64 })
+        if (insErr && (insErr.code === '42703' || /column .*(uf|senha)/i.test(insErr.message || ''))) {
+          console.warn('certificados_digitais sem coluna uf/senha; inserindo sem elas:', insErr.message)
+          await getSupabase().from('certificados_digitais').insert({ id: cid, empresa_id, cnpj, data_inclusao, data_vencimento, arquivo_nome, arquivo_base64 })
+        } else if (insErr) throw insErr
       }
       return json({ ok: true, id: cid })
     }
@@ -1269,12 +1463,20 @@ async function vercelHandler(event) {
       const upd = {}
       if (body.empresa_id !== undefined) upd.empresa_id = (body.empresa_id || '').trim()
       if (body.cnpj !== undefined) upd.cnpj = (body.cnpj || '').trim()
+      if (body.uf !== undefined) upd.uf = (body.uf || '').trim().toUpperCase()
+      if (body.senha !== undefined) upd.senha = body.senha
       if (body.data_inclusao !== undefined) upd.data_inclusao = (body.data_inclusao || '').trim()
       if (body.data_vencimento !== undefined) upd.data_vencimento = (body.data_vencimento || '').trim()
       if (body.arquivo_nome !== undefined) upd.arquivo_nome = (body.arquivo_nome || '').trim()
       if (body.arquivo_base64 !== undefined) upd.arquivo_base64 = body.arquivo_base64
       upd.updated_at = new Date().toISOString()
-      await getSupabase().from('certificados_digitais').update(upd).eq('id', parts[1])
+      let { error: updErr } = await getSupabase().from('certificados_digitais').update(upd).eq('id', parts[1])
+      if (updErr && (updErr.code === '42703' || /column .*(uf|senha)/i.test(updErr.message || ''))) {
+        console.warn('certificados_digitais sem coluna uf/senha; regravando sem elas:', updErr.message)
+        delete upd.uf
+        delete upd.senha
+        await getSupabase().from('certificados_digitais').update(upd).eq('id', parts[1])
+      }
       return json({ ok: true })
     }
 
@@ -1297,7 +1499,7 @@ async function vercelHandler(event) {
     if (route === 'sectors' && httpMethod === 'POST') {
       const authErr = requireAuth(user)
       if (authErr) return authErr
-      const adminErr = requireGlobalAdmin(user)
+      const adminErr = await requireGlobalPerm(user, 'setores', 'create')
       if (adminErr) return adminErr
       if (!validateCsrf(user, body.csrf_token)) {
         return json({ ok: false, erro: 'CSRF invalido' }, 403)
@@ -1318,7 +1520,7 @@ async function vercelHandler(event) {
     if (parts[0] === 'sectors' && parts[1] && httpMethod === 'PUT') {
       const authErr = requireAuth(user)
       if (authErr) return authErr
-      const adminErr = requireGlobalAdmin(user)
+      const adminErr = await requireGlobalPerm(user, 'setores', 'update')
       if (adminErr) return adminErr
       if (!validateCsrf(user, body.csrf_token)) {
         return json({ ok: false, erro: 'CSRF invalido' }, 403)
@@ -1333,7 +1535,7 @@ async function vercelHandler(event) {
     if (parts[0] === 'sectors' && parts[1] && httpMethod === 'DELETE') {
       const authErr = requireAuth(user)
       if (authErr) return authErr
-      const adminErr = requireGlobalAdmin(user)
+      const adminErr = await requireGlobalPerm(user, 'setores', 'delete')
       if (adminErr) return adminErr
       if (!validateCsrf(user, body.csrf_token)) {
         return json({ ok: false, erro: 'CSRF invalido' }, 403)
@@ -1405,7 +1607,7 @@ async function vercelHandler(event) {
     if (route === 'user-setores' && httpMethod === 'POST') {
       const authErr = requireAuth(user)
       if (authErr) return authErr
-      const adminErr = requireAdmin(user)
+      const adminErr = await requirePerm(user, 'usuarios', 'update')
       if (adminErr) return adminErr
       if (!validateCsrf(user, body.csrf_token)) {
         return json({ ok: false, erro: 'CSRF invalido' }, 403)
@@ -1431,7 +1633,7 @@ async function vercelHandler(event) {
     if (route === 'user-empresas' && httpMethod === 'POST') {
       const authErr = requireAuth(user)
       if (authErr) return authErr
-      const adminErr = requireAdmin(user)
+      const adminErr = await requirePerm(user, 'usuarios', 'update')
       if (adminErr) return adminErr
       if (!validateCsrf(user, body.csrf_token)) {
         return json({ ok: false, erro: 'CSRF invalido' }, 403)
@@ -1446,11 +1648,422 @@ async function vercelHandler(event) {
       return json({ ok: true })
     }
 
+    // ─── USER GRUPO EMPRESAS ───────────────────────────────────────────────────
+    if (route === 'user-grupo-empresas' && httpMethod === 'GET') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const adminErr = await requirePerm(user, 'usuarios', 'read')
+      if (adminErr) return adminErr
+      const targetUserId = parseInt(queryParams.user_id || '0')
+      if (!targetUserId) return json({ ok: false, erro: 'user_id obrigatorio' }, 400)
+      const { data } = await getSupabase().from('user_grupo_empresas').select('grupo_empresas_id').eq('user_id', targetUserId).limit(1)
+      return json({ ok: true, grupo_empresas_id: (data && data[0] && data[0].grupo_empresas_id) || null })
+    }
+
+    if (route === 'user-grupo-empresas' && httpMethod === 'POST') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const adminErr = await requirePerm(user, 'usuarios', 'update')
+      if (adminErr) return adminErr
+      if (!validateCsrf(user, body.csrf_token)) {
+        return json({ ok: false, erro: 'CSRF invalido' }, 403)
+      }
+      const userId = parseInt(body.user_id)
+      const grupoId = body.grupo_empresas_id || null
+      if (!userId) return json({ ok: false, erro: 'user_id obrigatorio' }, 400)
+
+      // Sempre limpar grupo anterior (permite remover o grupo do usuário)
+      await getSupabase().from('user_grupo_empresas').delete().eq('user_id', userId)
+      if (grupoId) {
+        await getSupabase().from('user_grupo_empresas').insert({ user_id: userId, grupo_empresas_id: grupoId })
+      }
+      return json({ ok: true })
+    }
+
+    // ─── USER PERMISSIONS ───────────────────────────────────────────────────
+    if (route === 'user-permissions' && httpMethod === 'GET') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const adminErr = await requirePerm(user, 'usuarios', 'read')
+      if (adminErr) return adminErr
+      const targetUserId = parseInt(queryParams.user_id || user.id)
+      const { data } = await getSupabase().from('user_permissions').select('*').eq('user_id', targetUserId)
+      return json(data || [])
+    }
+
+    if (route === 'user-permissions' && httpMethod === 'POST') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const adminErr = await requirePerm(user, 'usuarios', 'update')
+      if (adminErr) return adminErr
+      if (!validateCsrf(user, body.csrf_token)) {
+        return json({ ok: false, erro: 'CSRF invalido' }, 403)
+      }
+      const targetUserId = parseInt(body.user_id)
+      const permissions = body.permissions || [] // array of {resource, action, empresa_id}
+      if (!targetUserId) return json({ ok: false, erro: 'user_id obrigatorio' }, 400)
+
+      await getSupabase().from('user_permissions').delete().eq('user_id', targetUserId)
+      for (const p of permissions) {
+        if (p.resource && p.action) {
+          await getSupabase().from('user_permissions').insert({
+            user_id: targetUserId,
+            resource: p.resource,
+            action: p.action,
+            empresa_id: p.empresa_id || null
+          })
+        }
+      }
+      await audit(user.id, 'UPDATE', 'user_permissions', String(targetUserId), `Permissões atualizadas para usuário ${targetUserId}`)
+      return json({ ok: true })
+    }
+
+    if (route === 'user-permissions-copy' && httpMethod === 'POST') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const adminErr = await requirePerm(user, 'usuarios', 'update')
+      if (adminErr) return adminErr
+      if (!validateCsrf(user, body.csrf_token)) {
+        return json({ ok: false, erro: 'CSRF invalido' }, 403)
+      }
+      const fromUserId = parseInt(body.from_user_id)
+      const toUserId = parseInt(body.to_user_id)
+      if (!fromUserId || !toUserId) return json({ ok: false, erro: 'from_user_id e to_user_id obrigatorios' }, 400)
+
+      const { data: perms } = await getSupabase().from('user_permissions').select('*').eq('user_id', fromUserId)
+      await getSupabase().from('user_permissions').delete().eq('user_id', toUserId)
+      for (const p of (perms || [])) {
+        await getSupabase().from('user_permissions').insert({
+          user_id: toUserId,
+          resource: p.resource,
+          action: p.action,
+          empresa_id: p.empresa_id
+        })
+      }
+      await audit(user.id, 'COPY', 'user_permissions', String(toUserId), `Permissões copiadas de usuário ${fromUserId} para ${toUserId}`)
+      return json({ ok: true })
+    }
+
+    // ─── ROLES ───────────────────────────────────────────────────
+    if (route === 'roles' && httpMethod === 'GET') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const adminErr = await requirePerm(user, 'usuarios', 'read')
+      if (adminErr) return adminErr
+      const { data } = await getSupabase().from('roles').select('*').order('nome')
+      return json(data || [])
+    }
+
+    if (route === 'roles' && httpMethod === 'POST') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const adminErr = await requirePerm(user, 'usuarios', 'create')
+      if (adminErr) return adminErr
+      if (!validateCsrf(user, body.csrf_token)) {
+        return json({ ok: false, erro: 'CSRF invalido' }, 403)
+      }
+      const rid = body.id || crypto.randomUUID()
+      const nome = (body.nome || '').trim()
+      const descricao = (body.descricao || '').trim()
+      if (!nome) return json({ ok: false, erro: 'Nome da role é obrigatório' }, 400)
+      const { data: existing } = await getSupabase().from('roles').select('id').eq('id', rid).single()
+      const isSystem = body.is_system ? 1 : 0
+      if (existing) {
+        await getSupabase().from('roles').update({ nome, descricao, is_system: isSystem }).eq('id', rid)
+      } else {
+        await getSupabase().from('roles').insert({ id: rid, nome, descricao, is_system: isSystem })
+      }
+      return json({ ok: true, id: rid })
+    }
+
+    if (parts[0] === 'roles' && parts[1] && httpMethod === 'GET') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const adminErr = await requirePerm(user, 'usuarios', 'read')
+      if (adminErr) return adminErr
+      const { data } = await getSupabase().from('roles').select('*').eq('id', parts[1]).single()
+      return json(data || {})
+    }
+
+    if (parts[0] === 'roles' && parts[1] && httpMethod === 'PUT') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const adminErr = await requirePerm(user, 'usuarios', 'update')
+      if (adminErr) return adminErr
+      if (!validateCsrf(user, body.csrf_token)) {
+        return json({ ok: false, erro: 'CSRF invalido' }, 403)
+      }
+      const upd = {}
+      if (body.nome !== undefined) upd.nome = (body.nome || '').trim()
+      if (body.descricao !== undefined) upd.descricao = (body.descricao || '').trim()
+      if (body.is_system !== undefined) upd.is_system = body.is_system ? 1 : 0
+      await getSupabase().from('roles').update(upd).eq('id', parts[1])
+      return json({ ok: true })
+    }
+
+    if (parts[0] === 'roles' && parts[1] && httpMethod === 'DELETE') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const adminErr = await requirePerm(user, 'usuarios', 'delete')
+      if (adminErr) return adminErr
+      if (!validateCsrf(user, body.csrf_token)) {
+        return json({ ok: false, erro: 'CSRF invalido' }, 403)
+      }
+      const { data: role } = await getSupabase().from('roles').select('is_system').eq('id', parts[1]).single()
+      if (role?.is_system) return json({ ok: false, erro: 'Não é possível excluir role do sistema' }, 400)
+      await getSupabase().from('roles').delete().eq('id', parts[1])
+      clearRolePermCache(parts[1])
+      return json({ ok: true })
+    }
+
+    // ─── ROLE PERMISSIONS ───────────────────────────────────────────────────
+    if (route === 'role-permissions' && httpMethod === 'GET') {
+      // Leitura liberada para qualquer usuário autenticado: é esta consulta que o
+      // próprio sistema usa (frontend) para liberar/bloquear as telas por permissão.
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const roleId = queryParams.role_id
+      if (!roleId) return json({ ok: false, erro: 'role_id obrigatório' }, 400)
+      const { data } = await getSupabase().from('role_permissions').select('*').eq('role_id', roleId)
+      return json(data || [])
+    }
+
+    if (route === 'role-permissions' && httpMethod === 'POST') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const adminErr = await requirePerm(user, 'usuarios', 'update')
+      if (adminErr) return adminErr
+      if (!validateCsrf(user, body.csrf_token)) {
+        return json({ ok: false, erro: 'CSRF invalido' }, 403)
+      }
+      const roleId = body.role_id
+      const permissions = body.permissions || [] // array of {resource, action, empresa_id}
+      if (!roleId) return json({ ok: false, erro: 'role_id obrigatório' }, 400)
+
+      // Admin role has wildcard - don't allow modifying
+      const { data: role } = await getSupabase().from('roles').select('is_system').eq('id', roleId).single()
+      if (role?.is_system && roleId === 'role_admin') {
+        return json({ ok: false, erro: 'Não é possível alterar permissões do Administrador' }, 400)
+      }
+
+      await getSupabase().from('role_permissions').delete().eq('role_id', roleId)
+      for (const p of permissions) {
+        if (p.resource && p.action) {
+          await getSupabase().from('role_permissions').insert({
+            role_id: roleId,
+            resource: p.resource,
+            action: p.action,
+            empresa_id: p.empresa_id || null,
+            company_group_id: p.company_group_id || null
+          })
+        }
+      }
+      clearRolePermCache(roleId)
+      await audit(user.id, 'UPDATE', 'role_permissions', roleId, `Permissões atualizadas para role ${roleId}`)
+      return json({ ok: true })
+    }
+
+    if (route === 'role-permissions-copy' && httpMethod === 'POST') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const adminErr = await requirePerm(user, 'usuarios', 'update')
+      if (adminErr) return adminErr
+      if (!validateCsrf(user, body.csrf_token)) {
+        return json({ ok: false, erro: 'CSRF invalido' }, 403)
+      }
+      const fromRoleId = body.from_role_id
+      const toRoleId = body.to_role_id
+      if (!fromRoleId || !toRoleId) return json({ ok: false, erro: 'from_role_id e to_role_id obrigatórios' }, 400)
+
+      const { data: perms } = await getSupabase().from('role_permissions').select('*').eq('role_id', fromRoleId)
+      await getSupabase().from('role_permissions').delete().eq('role_id', toRoleId)
+      for (const p of (perms || [])) {
+        await getSupabase().from('role_permissions').insert({
+          role_id: toRoleId,
+          resource: p.resource,
+          action: p.action,
+          empresa_id: p.empresa_id,
+          company_group_id: p.company_group_id
+        })
+      }
+      clearRolePermCache(toRoleId)
+      await audit(user.id, 'COPY', 'role_permissions', toRoleId, `Permissões copiadas de role ${fromRoleId} para ${toRoleId}`)
+      return json({ ok: true })
+    }
+
+    // ─── COMPANY GROUPS ───────────────────────────────────────────────────
+    if (route === 'company-groups' && httpMethod === 'GET') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const adminErr = await requirePerm(user, 'empresas', 'read')
+      if (adminErr) return adminErr
+      const { data } = await getSupabase().from('company_groups').select('*').order('nome')
+      return json(data || [])
+    }
+
+    if (route === 'company-groups' && httpMethod === 'POST') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const adminErr = await requirePerm(user, 'empresas', 'create')
+      if (adminErr) return adminErr
+      if (!validateCsrf(user, body.csrf_token)) {
+        return json({ ok: false, erro: 'CSRF invalido' }, 403)
+      }
+      const gid = body.id || crypto.randomUUID()
+      const nome = (body.nome || '').trim()
+      const descricao = (body.descricao || '').trim()
+      if (!nome) return json({ ok: false, erro: 'Nome do grupo é obrigatório' }, 400)
+      const { data: existing } = await getSupabase().from('company_groups').select('id').eq('id', gid).single()
+      if (existing) {
+        await getSupabase().from('company_groups').update({ nome, descricao }).eq('id', gid)
+      } else {
+        await getSupabase().from('company_groups').insert({ id: gid, nome, descricao })
+      }
+      return json({ ok: true, id: gid })
+    }
+
+    if (parts[0] === 'company-groups' && parts[1] && httpMethod === 'PUT') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const adminErr = await requirePerm(user, 'empresas', 'update')
+      if (adminErr) return adminErr
+      if (!validateCsrf(user, body.csrf_token)) {
+        return json({ ok: false, erro: 'CSRF invalido' }, 403)
+      }
+      const upd = {}
+      if (body.nome !== undefined) upd.nome = (body.nome || '').trim()
+      if (body.descricao !== undefined) upd.descricao = (body.descricao || '').trim()
+      await getSupabase().from('company_groups').update(upd).eq('id', parts[1])
+      return json({ ok: true })
+    }
+
+    if (parts[0] === 'company-groups' && parts[1] && httpMethod === 'DELETE') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const adminErr = await requirePerm(user, 'empresas', 'delete')
+      if (adminErr) return adminErr
+      if (!validateCsrf(user, body.csrf_token)) {
+        return json({ ok: false, erro: 'CSRF invalido' }, 403)
+      }
+      await getSupabase().from('company_group_members').delete().eq('group_id', parts[1])
+      await getSupabase().from('company_groups').delete().eq('id', parts[1])
+      return json({ ok: true })
+    }
+
+    // ─── COMPANY GROUP MEMBERS ───────────────────────────────────────────────────
+    if (route === 'company-group-members' && httpMethod === 'GET') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const adminErr = await requirePerm(user, 'empresas', 'read')
+      if (adminErr) return adminErr
+      const groupId = queryParams.group_id
+      if (!groupId) return json({ ok: false, erro: 'group_id obrigatório' }, 400)
+      const { data } = await getSupabase().from('company_group_members').select('*, companies(id, nome)').eq('group_id', groupId)
+      return json(data || [])
+    }
+
+    if (route === 'company-group-members' && httpMethod === 'POST') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const adminErr = await requirePerm(user, 'empresas', 'update')
+      if (adminErr) return adminErr
+      if (!validateCsrf(user, body.csrf_token)) {
+        return json({ ok: false, erro: 'CSRF invalido' }, 403)
+      }
+      const groupId = body.group_id
+      const empresaIds = body.empresa_ids || []
+      if (!groupId) return json({ ok: false, erro: 'group_id obrigatório' }, 400)
+      await getSupabase().from('company_group_members').delete().eq('group_id', groupId)
+      for (const empresaId of empresaIds) {
+        await getSupabase().from('company_group_members').insert({ group_id: groupId, empresa_id: empresaId })
+      }
+      return json({ ok: true })
+    }
+
+    // ─── DESTINATÁRIOS (CRUD direto, sem depender do sync em lote) ─────
+    if (route === 'destinatarios' && httpMethod === 'POST') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const adminErr = await requirePerm(user, 'destinatarios', 'create')
+      if (adminErr) return adminErr
+      if (!validateCsrf(user, body.csrf_token)) {
+        return json({ ok: false, erro: 'CSRF invalido' }, 403)
+      }
+      const did = (body.id || '').trim()
+      const email = (body.email || '').trim()
+      if (!did || !email) return json({ ok: false, erro: 'id e email obrigatórios' }, 400)
+      const nowIso = new Date().toISOString()
+      const row = {
+        email, nome: (body.nome || '').trim(),
+        empresa_ids: JSON.stringify(body.empresaIds || []),
+        setores: JSON.stringify(body.setores || []),
+        alertas: JSON.stringify(body.alertas || []),
+        updated_at: body.updated_at || nowIso,
+        deleted_at: body.deleted_at || null
+      }
+      const { data: existing } = await getSupabase().from('destinatarios').select('id').eq('id', did).single()
+      if (existing) {
+        const { error } = await getSupabase().from('destinatarios').update(row).eq('id', did)
+        if (error) return json({ ok: false, erro: 'Erro ao atualizar destinatário: ' + error.message }, 500)
+      } else {
+        const { error } = await getSupabase().from('destinatarios').insert({ id: did, ...row, criado_em: nowIso })
+        if (error) return json({ ok: false, erro: 'Erro ao criar destinatário: ' + error.message }, 500)
+      }
+      await audit(user.id, existing ? 'UPDATE' : 'CREATE', 'destinatario', did, `Destinatário ${email}`)
+      return json({ ok: true, id: did })
+    }
+
+    if (route === 'destinatarios' && httpMethod === 'GET') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const adminErr = await requirePerm(user, 'destinatarios', 'read')
+      if (adminErr) return adminErr
+      const { data } = await getSupabase().from('destinatarios').select('*').order('criado_em')
+      return json(data || [])
+    }
+
+    if (parts[0] === 'destinatarios' && parts[1] && httpMethod === 'DELETE') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const adminErr = await requirePerm(user, 'destinatarios', 'delete')
+      if (adminErr) return adminErr
+      if (!validateCsrf(user, body.csrf_token)) {
+        return json({ ok: false, erro: 'CSRF invalido' }, 403)
+      }
+      const nowIso = new Date().toISOString()
+      await getSupabase().from('destinatarios').update({ deleted_at: nowIso, updated_at: nowIso }).eq('id', parts[1])
+      await audit(user.id, 'DELETE', 'destinatario', parts[1], 'Destinatário excluído')
+      return json({ ok: true })
+    }
+
+    // ─── USER ROLE ASSIGNMENT ───────────────────────────────────────────────────
+    if (route === 'user-role' && httpMethod === 'POST') {
+      const authErr = requireAuth(user)
+      if (authErr) return authErr
+      const adminErr = await requirePerm(user, 'usuarios', 'update')
+      if (adminErr) return adminErr
+      if (!validateCsrf(user, body.csrf_token)) {
+        return json({ ok: false, erro: 'CSRF invalido' }, 403)
+      }
+      const userId = parseInt(body.user_id)
+      const roleId = body.role_id
+      if (!userId || !roleId) return json({ ok: false, erro: 'user_id e role_id obrigatórios' }, 400)
+      const manageErr = await requirePermToManageUser(user, userId)
+      if (manageErr) return manageErr
+      const roleErr = await requirePermParaRole(user, roleId)
+      if (roleErr) return roleErr
+      // Mantém o campo legado `role` em sincronia com a role atribuída,
+      // senão menu/telas continuam tratando o usuário pelo papel antigo.
+      await getSupabase().from('users').update({ role_id: roleId, role: legacyRoleFromRoleId(roleId, 'usuario') }).eq('id', userId)
+      await audit(user.id, 'UPDATE', 'user_role', String(userId), `Role ${roleId} atribuída ao usuário ${userId}`)
+      return json({ ok: true })
+    }
+
     // ─── CONTRACTS DELETE ────────────────────────────────────────────────
     if (parts[0] === 'contracts' && parts[1] && httpMethod === 'DELETE') {
       const authErr = requireAuth(user)
       if (authErr) return authErr
-      const adminErr = requireAdmin(user)
+      const adminErr = await requirePerm(user, 'contratos', 'delete')
       if (adminErr) return adminErr
       if (!validateCsrf(user, body.csrf_token)) {
         return json({ ok: false, erro: 'CSRF invalido' }, 403)
@@ -1466,7 +2079,7 @@ async function vercelHandler(event) {
     if (parts[0] === 'payments' && parts[1] && httpMethod === 'DELETE') {
       const authErr = requireAuth(user)
       if (authErr) return authErr
-      const adminErr = requireAdmin(user)
+      const adminErr = await requirePerm(user, 'pagamentos', 'delete')
       if (adminErr) return adminErr
       if (!validateCsrf(user, body.csrf_token)) {
         return json({ ok: false, erro: 'CSRF invalido' }, 403)
@@ -1720,8 +2333,12 @@ async function vercelHandler(event) {
         const PAYMENT_COLS = 'id,contract_id,descricao,vencimento,valor,contrato_num,data_pagamento,valor_pago,forma_pagamento,status,obs,created_by,paid_by,created_at,updated_at,deleted_at,comprovante'
         const ADDITIVE_COLS = 'id,contract_id,numero,data_aditivo,tipo,nova_data_fim,acrescimo_valor,descricao,created_by,created_at,updated_at,deleted_at,arquivo_contrato'
         const CERTIDAO_COLS = 'id,empresa_id,cnpj,uf,cidade,tipo,data_emissao,data_validade,status,arquivo_nome,arquivo_dados,observacoes,criado_em,updated_at,deleted_at'
-        const LICITACAO_COLS = 'id,empresa_id,numero_licitacao,edital,nome_licitacao,cnpj,objeto,contrato_id,valor,data_homologacao,data_inicio,data_fim,status,arquivos,observacoes,criado_em,updated_at,deleted_at'
+        const LICITACAO_COLS = 'id,empresa_id,numero_licitacao,edital,nome_licitacao,cnpj,uf,cidade,objeto,contrato_id,valor,indice_reajuste,data_homologacao,data_inicio,data_fim,status,arquivos,observacoes,criado_em,updated_at,deleted_at'
         const DEST_COLS = 'id,email,nome,empresa_ids,setores,alertas,criado_em,updated_at,deleted_at'
+        const ROLES_COLS = 'id,nome,descricao,is_system,created_at,updated_at,deleted_at'
+        const ROLE_PERMS_COLS = 'id,role_id,resource,action,empresa_id,company_group_id,created_at,updated_at,deleted_at'
+        const COMPANY_GROUPS_COLS = 'id,nome,descricao,created_at,updated_at,deleted_at'
+        const COMPANY_GROUP_MEMBERS_COLS = 'group_id,empresa_id'
         const sq = (tbl, cols) => {
           let q = getSupabase().from(tbl).select(cols)
           if (since) {
@@ -1750,11 +2367,22 @@ async function vercelHandler(event) {
           ['companies', () => getSupabase().from('companies').select('*').order('nome')],
           ['destinatarios', () => sq('destinatarios', DEST_COLS).order('criado_em')],
           ['certidoes', () => sq('certidoes', CERTIDAO_COLS).order('criado_em', { ascending: false })],
-          ['licitacoes', () => sq('licitacoes', LICITACAO_COLS).order('criado_em', { ascending: false })],
+          ['licitacoes', async () => {
+            let r = await sq('licitacoes', LICITACAO_COLS).order('criado_em', { ascending: false })
+            if (r.error && /column .* (uf|cidade)/i.test(r.error.message || '')) {
+              console.warn('[SYNC-GET] Colunas uf/cidade ausentes em licitacoes, rode a migration no Supabase SQL Editor')
+              r = await sq('licitacoes', LICITACAO_COLS.replace(',uf', '').replace(',cidade', '')).order('criado_em', { ascending: false })
+            }
+            return r
+          }],
           ['sectors', () => getSupabase().from('sectors').select('*').order('nome')],
           ['user_setores', () => getSupabase().from('user_setores').select('*')],
           ['tipos_certidao', () => getSupabase().from('tipos_certidao').select('*').order('nome')],
           ['certificados_digitais', () => sq('certificados_digitais', 'id,empresa_id,cnpj,data_inclusao,data_vencimento,arquivo_nome,arquivo_base64,criado_em,updated_at,deleted_at').order('criado_em', { ascending: false })],
+          ['roles', () => getSupabase().from('roles').select(ROLES_COLS).order('nome')],
+          ['role_permissions', () => getSupabase().from('role_permissions').select(ROLE_PERMS_COLS).order('created_at')],
+          ['company_groups', () => getSupabase().from('company_groups').select(COMPANY_GROUPS_COLS).order('nome')],
+          ['company_group_members', () => getSupabase().from('company_group_members').select(COMPANY_GROUP_MEMBERS_COLS)],
         ]
         const results = []
         for (const [label, fn] of queries) {
@@ -1764,12 +2392,15 @@ async function vercelHandler(event) {
           results.push(r)
         }
         console.log('[SYNC-GET] Total queries:', Date.now() - t0, 'ms')
-        const [contratos, pagamentos, usuarios, aditivos, empresas, destinatarios, certidoes, licitacoes, sectors, userSetores, tiposCertidao, certificadosDigitais] = results
+        const [contratos, pagamentos, usuarios, aditivos, empresas, destinatarios, certidoes, licitacoes, sectors, userSetores, tiposCertidao, certificadosDigitais, roles, rolePermissions, companyGroups, companyGroupMembers] = results
         const resp = {
           contratos, pagamentos, usuarios, aditivos, empresas,
           destinatarios, certidoes, licitacoes, sectors, user_setores: userSetores,
           tipos_certidao: tiposCertidao,
           certificados_digitais: certificadosDigitais,
+          roles, role_permissions: rolePermissions,
+          company_groups: companyGroups,
+          company_group_members: companyGroupMembers,
           server_now: new Date().toISOString()
         }
         const respSize = Math.round(JSON.stringify(resp).length / 1024)
@@ -1789,7 +2420,7 @@ async function vercelHandler(event) {
           return json({ ok: false, erro: 'CSRF invalido' }, 403)
         }
         if (!body) return json({ ok: false, erro: 'JSON invalido ou vazio.' }, 400)
-        const importados = { contratos: 0, pagamentos: 0, aditivos: 0, ignorados: 0 }
+        const importados = { contratos: 0, pagamentos: 0, aditivos: 0, roles: 0, role_permissions: 0, company_groups: 0, company_group_members: 0, ignorados: 0 }
         const MAX_BASE64 = 4 * 1024 * 1024
 
         for (const c of (body.contratos || [])) {
@@ -2085,8 +2716,11 @@ async function vercelHandler(event) {
             if (lc.arquivoContrato) arquivos.push({ ...lc.arquivoContrato, tipo: 'contrato' })
             const vals = {
               numero_licitacao: numero, edital: (lc.edital || '').trim(),
+              uf: (lc.uf || '').trim().toUpperCase(),
+              cidade: (lc.cidade || '').trim(),
               objeto: (lc.objeto || '').trim(), empresa_id: lc.empresaId || '',
               contrato_id: lc.contratoId || '', valor: safeFloat(lc.valor),
+              indice_reajuste: (lc.indiceReajuste || '').trim(),
               data_homologacao: lc.dataHomologacao || '',
               data_inicio: lc.dataInicio || '', data_fim: lc.dataFim || '',
               status: lc.status || 'em_andamento',
@@ -2122,6 +2756,133 @@ async function vercelHandler(event) {
           }
         }
 
+        for (const r of (body.roles || [])) {
+          const rid = (r.id || '').trim()
+          const nome = (r.nome || '').trim()
+          if (!rid || !nome) { importados.ignorados++; continue }
+          try {
+            const incomingUpdated = r.updated_at || r.created_at || new Date().toISOString()
+            const incomingDeleted = r.deleted_at || null
+            const { data: existing } = await getSupabase().from('roles').select('id, updated_at').eq('id', rid).single()
+            const vals = { nome, descricao: r.descricao || '', is_system: r.is_system || 0, updated_at: incomingUpdated }
+            if (existing) {
+              const existingUpdated = existing.updated_at || ''
+              if (incomingUpdated <= existingUpdated && !incomingDeleted) {
+                importados.roles = (importados.roles || 0) + 1
+                continue
+              }
+              if (incomingDeleted) {
+                await getSupabase().from('roles').delete().eq('id', rid)
+              } else {
+                const { error } = await getSupabase().from('roles').update(vals).eq('id', rid)
+                if (error) { await audit(user.id, 'SYNC_ERROR', 'roles', rid, error.message); importados.ignorados++; continue }
+              }
+            } else {
+              if (incomingDeleted) { importados.roles = (importados.roles || 0) + 1; continue }
+              const { error } = await getSupabase().from('roles').insert({ id: rid, ...vals })
+              if (error) { await audit(user.id, 'SYNC_ERROR', 'roles', rid, error.message); importados.ignorados++; continue }
+            }
+            importados.roles = (importados.roles || 0) + 1
+          } catch (e) {
+            await audit(user.id, 'SYNC_ERROR', 'roles', rid, e.message)
+            importados.ignorados++
+          }
+        }
+
+        for (const rp of (body.role_permissions || [])) {
+          const rpid = String(rp.id ?? '').trim()
+          const roleId = (rp.role_id || '').trim()
+          const resource = (rp.resource || '').trim()
+          const action = (rp.action || '').trim()
+          if (!rpid || !roleId || !resource || !action) { importados.ignorados++; continue }
+          try {
+            const incomingUpdated = rp.updated_at || rp.created_at || new Date().toISOString()
+            const incomingDeleted = rp.deleted_at || null
+            const { data: existing } = await getSupabase().from('role_permissions').select('id, updated_at').eq('id', rpid).single()
+            const vals = { role_id: roleId, resource, action, empresa_id: rp.empresa_id || null, company_group_id: rp.company_group_id || null, updated_at: incomingUpdated }
+            if (existing) {
+              const existingUpdated = existing.updated_at || ''
+              if (incomingUpdated <= existingUpdated && !incomingDeleted) {
+                importados.role_permissions = (importados.role_permissions || 0) + 1
+                continue
+              }
+              if (incomingDeleted) {
+                await getSupabase().from('role_permissions').delete().eq('id', rpid)
+              } else {
+                const { error } = await getSupabase().from('role_permissions').update(vals).eq('id', rpid)
+                if (error) { await audit(user.id, 'SYNC_ERROR', 'role_permissions', rpid, error.message); importados.ignorados++; continue }
+              }
+            } else {
+              if (incomingDeleted) { importados.role_permissions = (importados.role_permissions || 0) + 1; continue }
+              const { error } = await getSupabase().from('role_permissions').insert({ id: rpid, ...vals })
+              if (error) { await audit(user.id, 'SYNC_ERROR', 'role_permissions', rpid, error.message); importados.ignorados++; continue }
+            }
+            importados.role_permissions = (importados.role_permissions || 0) + 1
+          } catch (e) {
+            await audit(user.id, 'SYNC_ERROR', 'role_permissions', rpid, e.message)
+            importados.ignorados++
+          }
+        }
+
+        for (const cg of (body.company_groups || [])) {
+          const cgid = (cg.id || '').trim()
+          const nome = (cg.nome || '').trim()
+          if (!cgid || !nome) { importados.ignorados++; continue }
+          try {
+            const incomingUpdated = cg.updated_at || cg.created_at || new Date().toISOString()
+            const incomingDeleted = cg.deleted_at || null
+            const { data: existing } = await getSupabase().from('company_groups').select('id, updated_at').eq('id', cgid).single()
+            const vals = { nome, descricao: cg.descricao || '', updated_at: incomingUpdated }
+            if (existing) {
+              const existingUpdated = existing.updated_at || ''
+              if (incomingUpdated <= existingUpdated && !incomingDeleted) {
+                importados.company_groups = (importados.company_groups || 0) + 1
+                continue
+              }
+              if (incomingDeleted) {
+                await getSupabase().from('company_groups').delete().eq('id', cgid)
+              } else {
+                const { error } = await getSupabase().from('company_groups').update(vals).eq('id', cgid)
+                if (error) { await audit(user.id, 'SYNC_ERROR', 'company_groups', cgid, error.message); importados.ignorados++; continue }
+              }
+            } else {
+              if (incomingDeleted) { importados.company_groups = (importados.company_groups || 0) + 1; continue }
+              const { error } = await getSupabase().from('company_groups').insert({ id: cgid, ...vals })
+              if (error) { await audit(user.id, 'SYNC_ERROR', 'company_groups', cgid, error.message); importados.ignorados++; continue }
+            }
+            importados.company_groups = (importados.company_groups || 0) + 1
+          } catch (e) {
+            await audit(user.id, 'SYNC_ERROR', 'company_groups', cgid, e.message)
+            importados.ignorados++
+          }
+        }
+
+        for (const cgm of (body.company_group_members || [])) {
+          const groupId = (cgm.group_id || '').trim()
+          const empresaId = (cgm.empresa_id || '').trim()
+          if (!groupId || !empresaId) { importados.ignorados++; continue }
+          try {
+            const incomingUpdated = cgm.updated_at || cgm.created_at || new Date().toISOString()
+            const incomingDeleted = cgm.deleted_at || null
+            const { data: existing } = await getSupabase().from('company_group_members').select('group_id, empresa_id').eq('group_id', groupId).eq('empresa_id', empresaId).single()
+            if (existing) {
+              if (incomingDeleted) {
+                await getSupabase().from('company_group_members').delete().eq('group_id', groupId).eq('empresa_id', empresaId)
+              }
+            } else {
+              if (!incomingDeleted) {
+                const { error } = await getSupabase().from('company_group_members').insert({ group_id: groupId, empresa_id: empresaId })
+                if (error) { await audit(user.id, 'SYNC_ERROR', 'company_group_members', groupId + '_' + empresaId, error.message); importados.ignorados++; continue }
+              }
+            }
+            importados.company_group_members = (importados.company_group_members || 0) + 1
+          } catch (e) {
+            await audit(user.id, 'SYNC_ERROR', 'company_group_members', groupId + '_' + empresaId, e.message)
+            importados.ignorados++
+          }
+        }
+
+        clearRolePermCache()
         await audit(user.id, 'SYNC', 'system', '', `Sincronizacao concluida: ${JSON.stringify(importados)}`)
         return json({ ok: true, importados })
       }
@@ -2253,15 +3014,37 @@ async function vercelHandler(event) {
         id: lid, numero_licitacao: numero, edital: (body.edital || '').trim(),
         nome_licitacao: (body.nome_licitacao || '').trim(),
         cnpj: (body.cnpj || '').trim(),
+        uf: (body.uf || '').trim().toUpperCase(),
+        cidade: (body.cidade || '').trim(),
         objeto, empresa_id: body.empresa_id || '',
         contrato_id: body.contrato_id || '', valor: safeFloat(body.valor),
+        indice_reajuste: (body.indice_reajuste || '').trim(),
         data_homologacao: body.data_homologacao || '',
         data_inicio: body.data_inicio || '', data_fim: body.data_fim || '',
         status: body.status || 'em_andamento',
         arquivos: body.arquivos || '[]',
         observacoes: (body.obs || '').trim()
       })
-      if (error) return json({ ok: false, erro: error.message }, 500)
+      if (error && (error.code === '42703' || /column .* (uf|cidade)/i.test(error.message || ''))) {
+        // Migração pendente (colunas uf/cidade): salva sem elas para não travar o usuário
+        console.warn('[licitacoes] Colunas uf/cidade ausentes, rode a migration no Supabase SQL Editor:', error.message)
+        const { error: error2 } = await getSupabase().from('licitacoes').insert({
+          id: lid, numero_licitacao: numero, edital: (body.edital || '').trim(),
+          nome_licitacao: (body.nome_licitacao || '').trim(),
+          cnpj: (body.cnpj || '').trim(),
+          objeto, empresa_id: body.empresa_id || '',
+          contrato_id: body.contrato_id || '', valor: safeFloat(body.valor),
+          indice_reajuste: (body.indice_reajuste || '').trim(),
+          data_homologacao: body.data_homologacao || '',
+          data_inicio: body.data_inicio || '', data_fim: body.data_fim || '',
+          status: body.status || 'em_andamento',
+          arquivos: body.arquivos || '[]',
+          observacoes: (body.obs || '').trim()
+        })
+        if (error2) return json({ ok: false, erro: error2.message }, 500)
+      } else if (error) {
+        return json({ ok: false, erro: error.message }, 500)
+      }
       await audit(user.id, 'CREATE', 'licitacao', lid, `Licitacao ${numero} criada`)
       return json({ ok: true, id: lid })
     }
@@ -2277,17 +3060,27 @@ async function vercelHandler(event) {
       if (body.edital !== undefined) upd.edital = body.edital
       if (body.nome_licitacao !== undefined) upd.nome_licitacao = body.nome_licitacao
       if (body.cnpj !== undefined) upd.cnpj = body.cnpj
+      if (body.uf !== undefined) upd.uf = (body.uf || '').trim().toUpperCase()
+      if (body.cidade !== undefined) upd.cidade = (body.cidade || '').trim()
       if (body.objeto !== undefined) upd.objeto = body.objeto
       if (body.empresa_id !== undefined) upd.empresa_id = body.empresa_id
       if (body.contrato_id !== undefined) upd.contrato_id = body.contrato_id
       if (body.valor !== undefined) upd.valor = safeFloat(body.valor)
+      if (body.indice_reajuste !== undefined) upd.indice_reajuste = (body.indice_reajuste || '').trim()
       if (body.data_homologacao !== undefined) upd.data_homologacao = body.data_homologacao
       if (body.data_inicio !== undefined) upd.data_inicio = body.data_inicio
       if (body.data_fim !== undefined) upd.data_fim = body.data_fim
       if (body.status !== undefined) upd.status = body.status
       if (body.arquivos !== undefined) upd.arquivos = body.arquivos
       if (body.obs !== undefined) upd.observacoes = body.obs
-      const { error } = await getSupabase().from('licitacoes').update(upd).eq('id', parts[1])
+      if (body.deleted_at !== undefined) upd.deleted_at = body.deleted_at
+      let { error } = await getSupabase().from('licitacoes').update(upd).eq('id', parts[1])
+      if (error && (error.code === '42703' || /column .* (uf|cidade)/i.test(error.message || ''))) {
+        console.warn('[licitacoes] Colunas uf/cidade ausentes, rode a migration no Supabase SQL Editor:', error.message)
+        delete upd.uf
+        delete upd.cidade
+        ;({ error } = await getSupabase().from('licitacoes').update(upd).eq('id', parts[1]))
+      }
       if (error) return json({ ok: false, erro: error.message }, 500)
       await audit(user.id, 'UPDATE', 'licitacao', parts[1], `Licitacao atualizada`)
       return json({ ok: true })
@@ -2306,8 +3099,19 @@ async function vercelHandler(event) {
 
     // ─── CIDADES ───────────────────────────────────────────────────────────
     if (route === 'cidades' && httpMethod === 'GET') {
-      const cidades = {"AC":["Acrelândia","Assis Brasil","Brasileia","Bujari","Capixaba","Cruzeiro do Sul","Epitaciolândia","Feijó","Jordão","Mâncio Lima","Manoel Urbano","Marechal Thaumaturgo","Plácido de Castro","Porto Acre","Porto Walter","Sena Madureira","Tarauacá"],"AL":["Arapiraca","Atalaia","Barreira dos Lamas","Maceió","Marechal Deodoro","Penedo","Palmeira dos Índios","Rio Largo","São Miguel dos Campos","União dos Palmares"],"AM":["Manaus","Parintins","Manacapuru","Coari","Itacoatiara","Tefé","Maués","São Gabriel da Cachoeira","Humaitá","Tabatinga"],"AP":["Macapá","Santana","Laranjal do Jari","Oiapoque","Mazagão","Tartarugalzinho","Vitória do Jari","Porto Grande","Calçoene","Pedra Branca do Amapari"],"BA":["Salvador","Feira de Santana","Vitória da Conquista","Camaçari","Itabuna","Juazeiro","Lauro de Freitas","Ilhéus","Jequié","Teixeira de Freitas","Barreiras","Alagoinhas","Porto Seguro","Simões Filho","Paulo Afonso","Eunápolis","Santo Antônio de Jesus","Valença","Candeias","Guanambi","Jaçanã","Barra","Luís Eduardo Magalhães","Bom Jesus da Lapa","Brumado","Crateús","Irecê"],"CE":["Fortaleza","Caucaia","Juazeiro do Norte","Maracanaú","Sobral","Crato","Itapipoca","Maranguape","Iguatu","Quixadá","Pacatuba","Aquiraz","Canindé","Guaraciaba do Norte","Tianguá","Sobral"],"DF":["Brasília","Águas Claras","Ceilândia","Taguatinga","Samambaia","Plano Piloto","Planaltina","Recanto das Emas","Santa Maria","São Sebastião","Park Way","Núcleo Bandeirante","Gama","Guará","Cruzeiro","Sobradinho"],"ES":["Vitória","Vila Velha","Serra","Cariacica","Linhares","Cachoeiro de Itapemirim","Aracruz","São Mateus","Colatina","Guarapari","Cariacica","Marechal Floriano","Santa Teresa","São Gabriel da Palha","Nova Venécia"],"GO":["Goiânia","Aparecida de Goiânia","Anápolis","Rio Verde","Luziânia","Águas Lindas de Goiás","Formosa","Novo Gama","Itumbiara","Senador Canedo","Catalão","Jataí","Planaltina","Valparaíso de Goiás","Trindade","Ipameri"],"MA":["São Luís","Imperatriz","São José de Ribamar","Timon","Caxias","Codó","Bacabal","Balsas","Timon","Santa Inês","Paço do Lumiar","Pacuí","Açailândia","Pindaré Mirim","Chapadinha","Barreirinhas","Raposa","Alcântara","Santa Maria","Pirapemas"],"MG":["Belo Horizonte","Uberlândia","Contagem","Juiz de Fora","Betim","Montes Claros","Ribeirão das Neves","Uberaba","Governador Valadares","Ipatinga","Sete Lagoas","Divinópolis","Santa Luzia","Poços de Caldas","Patos de Minas","Teófilo Otoni","Pouso Alegre","Barbacena","Sabará","Varginha","Viçosa","Lavras","Itabira","Três Corações","Alfenas"],"MS":["Campo Grande","Dourados","Três Lagoas","Corumbá","Ponta Porã","Naviraí","Nova Andradina","Aquidauana","Sidrolândia","Maracaju","Nova Alvorada do Sul","Angélica","Iguatemi","Deodápolis","Juti"],"MT":["Cuiabá","Várzea Grande","Rondonópolis","Sinop","Sorriso","Lucas do Rio Verde","Tangará da Serra","Cáceres","Barra do Garças","Primavera do Leste","Barra do Bugres","Nobres","Campo Verde","Alta Floresta","Colíder","Guarantã do Norte","Nova Mutum","Canarana","Querência"],"PA":["Belém","Ananindeua","Santarém","Marabá","Castanhal","Parauapebas","Abaetetuba","Cametá","Marituba","Bragança","Altamira","Paragominas","Tucuruí","Tailândia","Redenção","São Félix do Xingu","Xinguara","Breves","Oriximiná","Juruti"],"PB":["João Pessoa","Campina Grande","Santa Rita","Patos","Bayeux","Sousa","Cajazeiras","Cabedelo","Guarabira","Sapé","Catolé do Rocha","São Bento","Itabaiana","Queimadas","Nova Cruz","Esperança","Lagoa Seca","Alagoa Grande","Pombal"],"PE":["Recife","Jaboatão dos Guararapes","Olinda","Caruaru","Petrolina","Paulista","Cabo de Santo Agostinho","Camaragibe","Vitória de Santo Antão","Igarassu","São Lourenço da Mata","Abreu e Lima","Sirinhaém","Catende","Palmares","Goiana","Lagoa do Itaenga","São José do Egito","Belo Jardim","Garanhuns","Bezerros","Salgueiro","Ouricuri","Flores","Surubim"],"PI":["Teresina","Parnaíba","Picos","Piripiri","Floriano","Campo Maior","Barras","União","Altos","José de Freitas","São Raimundo Nonato","Esperantina","Codó","Lagoa Alegre","Miguel Alves"],"PR":["Curitiba","Londrina","Maringá","Ponta Grossa","Cascavel","São José dos Pinhais","Foz do Iguaçu","Colombo","Guarapuava","Paranaguá","Araucária","Toledo","Apucarana","Pinhais","Campo Largo","Ampére","Almirante Tamandaré","Camaratégí","Umuarama","Chopinzinho","Telemaco Borba","Califórnia","Cruzeiro do Oeste","São Mateus do Sul"],"RJ":["Rio de Janeiro","São Gonçalo","Duque de Caxias","Nova Iguaçu","Niterói","Belford Roxo","São João de Meriti","Campos dos Goytacazes","Petrópolis","Volta Redonda","Magé","Itaboraí","Nova Friburgo","Barra Mansa","Angra dos Reis","Cabo Frio","Resende","Macaé","Nilópolis","Queimados","Araruama","Nova Iguaçu","Mesquita"],"RN":["Natal","Mossoró","Parnamirim","São Gonçalo do Amarante","Macaíba","Ceará-Mirim","Caicó","Açu","Currais Novos","São José de Mipibu","Canguaretama","Acari","São Tomé","Vera Cruz","Alexandria"],"RO":["Porto Velho","Ji-Paraná","Ariquemes","Vilhena","Cacoal","Jaru","Guajará-Mirim","Ouro Preto do Oeste","Pimenta Bueno","Cerejeiras","Alvorada do Oeste","Candeias do Jamari","São Francisco do Guaporé","Presidente Médici","Chupinguaia"],"RR":["Boa Vista","Rorainópolis","Caracaraí","Pacaraima","Alto Alegre","Cantá","Bonfim","Mucajaí","Normandia","Uiramutã"],"RS":["Porto Alegre","Caxias do Sul","Pelotas","Canoas","Santa Maria","Gravataí","Viamão","Novo Hamburgo","São Leopoldo","Rio Grande","Alvorada","Passo Fundo","Sapucaia do Sul","Cachoeirinha","Santa Cruz do Sul","Ijuí","Uruguaiana","Bagé","Bento Gonçalves","Erechim","Carazinho","Lajeado","Trairi","Gramado","Canela","Búzios"],"SC":["Florianópolis","Joinville","Blumenau","São José","Chapecó","Criciúma","Itajaí","Jaraguá do Sul","Lages","Palhoça","Balneário Camboriú","Brusque","Tubarão","Sorocaba","Navegantes","Itapema","Penha","Balneário Piçarras","Porto Belo","Campo Bom","Novo Hamburgo","São Bento do Sul","Gaspar","Guabiruba","Indaial","Pomerode"],"SE":["Aracaju","Nossa Senhora do Socorro","Lagarto","Itabaiana","São Cristóvão","Estância","Tobias Barreto","Simão Dias","Propriá","Capela","Umbaúba","Boquim","Barra dos Coqueiros"],"SP":["São Paulo","Guarulhos","Campinas","São Bernardo do Campo","Santo André","São José dos Campos","Osasco","Ribeirão Preto","Sorocaba","Santos","Mauá","São José do Rio Preto","Mogi das Cruzes","Diadema","Jundiaí","Piracicaba","Carapicuíba","Bauru","Itaquaquecetuba","São Vicente","Porto Feliz","São José do Rio Preto","Franca","Marília","Presidente Prudente","Araraquara","São Carlos","Ribeirão Preto","Presidente Epitácio","Araçatuba","Matão","Botucatu","Jaú","Limeira","Atibaia","Itatiba","Bragança Paulista","Votuporanga","Assis","Ourinhos","Tupã","Avaré","Itapeva","Registro","Iguape","Cajuru","Cruzeiro","Pindamonhangaba","Taubaté","Guaratinguetá","Aparecida","Cachoeira Paulista","Lorena","Pindamonhangaba","Taquaritinga","Catanduva","Bebedouro","Colina","Barretos","Jaboticabal","Gavião Peixoto","Ribeirão Preto","Passos","Poços de Caldas","Varginha","Alfenas","Passos","São Sebastião do Paraíso","Ituiutaba","Uberlândia","Uberaba","Araguari","Itumbiara","Rio Verde","Jataí"],"TO":["Palmas","Araguaína","Gurupi","Porto Nacional","Paraíso do Tocantins","Colinas do Tocantins","Guaraí","Tocantinópolis","Dianópolis","Miracema do Tocantins","Nova Rosalândia","Alvorada","São Félix do Tocantins","Lagoa da Confusão","Araguatins"]};
-      return json(cidades)
+      try {
+        let cidadesPath = nodePath.join(process.cwd(), 'api', 'cidades.json');
+        if (!fs.existsSync(cidadesPath)) {
+          cidadesPath = nodePath.join(process.cwd(), 'cidades.json');
+        }
+        if (fs.existsSync(cidadesPath)) {
+          const cidadesData = JSON.parse(fs.readFileSync(cidadesPath, 'utf-8'));
+          return json(cidadesData);
+        }
+      } catch (e) {
+        console.error('[CIDADES] Erro ao ler cidades.json:', e);
+      }
+      return json({});
     }
 
     // ─── UPLOAD-FILE (upload individual de anexos) ───────────────────────────

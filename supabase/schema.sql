@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS companies (
   id TEXT PRIMARY KEY,
   nome TEXT NOT NULL,
   cnpj TEXT DEFAULT '',
+  uf_cnpj TEXT DEFAULT '',
   active INTEGER NOT NULL DEFAULT 1,
   criado_em TEXT NOT NULL DEFAULT (now()::text)
 );
@@ -180,10 +181,13 @@ CREATE TABLE IF NOT EXISTS licitacoes (
   objeto TEXT DEFAULT '',
   contrato_id TEXT DEFAULT '',
   valor REAL DEFAULT 0,
+  indice_reajuste TEXT DEFAULT '',
   data_homologacao TEXT DEFAULT '',
   data_inicio TEXT DEFAULT '',
   data_fim TEXT DEFAULT '',
   status TEXT DEFAULT 'em_andamento',
+  uf TEXT DEFAULT '',
+  cidade TEXT DEFAULT '',
   arquivos TEXT DEFAULT '[]',
   resumo TEXT,
   observacoes TEXT DEFAULT '',
@@ -206,6 +210,77 @@ CREATE TABLE IF NOT EXISTS user_empresas (
   empresa_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
   PRIMARY KEY (user_id, empresa_id)
 );
+
+-- User Permissions (controle granular de acesso por ROLE)
+CREATE TABLE IF NOT EXISTS roles (
+  id TEXT PRIMARY KEY,
+  nome TEXT NOT NULL UNIQUE,
+  descricao TEXT DEFAULT '',
+  is_system INTEGER NOT NULL DEFAULT 0, -- 1 = não pode excluir (admin, admin_setor, etc)
+  created_at TEXT NOT NULL DEFAULT (now()::text),
+  updated_at TEXT,
+  deleted_at TEXT
+);
+
+-- Permissões por Role
+CREATE TABLE IF NOT EXISTS role_permissions (
+  id SERIAL PRIMARY KEY,
+  role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+  resource TEXT NOT NULL,
+  action TEXT NOT NULL,
+  empresa_id TEXT REFERENCES companies(id) ON DELETE CASCADE, -- NULL = todas empresas
+  created_at TEXT NOT NULL DEFAULT (now()::text),
+  updated_at TEXT,
+  deleted_at TEXT,
+  UNIQUE(role_id, resource, action, empresa_id)
+);
+CREATE INDEX IF NOT EXISTS idx_role_permissions_role ON role_permissions(role_id);
+
+-- User-Role (usuario pertence a uma role)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role_id TEXT REFERENCES roles(id) ON DELETE SET NULL;
+
+-- Company Groups (grupos de empresas) - criado antes de user_grupo_empresas
+CREATE TABLE IF NOT EXISTS company_groups (
+  id TEXT PRIMARY KEY,
+  nome TEXT NOT NULL UNIQUE,
+  descricao TEXT DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (now()::text),
+  updated_at TEXT,
+  deleted_at TEXT
+);
+
+-- Company Group Members (empresas dentro do grupo)
+CREATE TABLE IF NOT EXISTS company_group_members (
+  group_id TEXT NOT NULL REFERENCES company_groups(id) ON DELETE CASCADE,
+  empresa_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  PRIMARY KEY (group_id, empresa_id)
+);
+
+-- User-GrupoEmpresas (usuario pertence a um grupo de empresas)
+CREATE TABLE IF NOT EXISTS user_grupo_empresas (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  grupo_empresas_id TEXT NOT NULL REFERENCES company_groups(id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, grupo_empresas_id)
+);
+
+-- Seed roles padrão
+INSERT INTO roles (id, nome, descricao, is_system, created_at) VALUES
+  ('role_admin', 'Administrador', 'Acesso total ao sistema', 1, now()::text),
+  ('role_admin_setor', 'Administrador de Setor', 'Acesso configurável por setor/empresa', 1, now()::text),
+  ('role_usuario', 'Usuário Comum', 'Acesso básico configurável', 1, now()::text)
+ON CONFLICT (id) DO NOTHING;
+
+-- Admin tem todas as permissões (wildcard)
+INSERT INTO role_permissions (role_id, resource, action, empresa_id) VALUES
+  ('role_admin', '*', '*', NULL)
+ON CONFLICT DO NOTHING;
+
+-- Role Permissions pode referenciar empresa_id OU company_group_id
+ALTER TABLE role_permissions ADD COLUMN IF NOT EXISTS company_group_id TEXT REFERENCES company_groups(id) ON DELETE CASCADE;
+
+-- Índices
+CREATE INDEX IF NOT EXISTS idx_company_group_members_empresa ON company_group_members(empresa_id);
+CREATE INDEX IF NOT EXISTS idx_role_permissions_group ON role_permissions(company_group_id);
 
 -- Sync Log (rastreia todas as mutacoes para resolucao de conflitos)
 CREATE TABLE IF NOT EXISTS sync_log (

@@ -76,6 +76,19 @@
       gap: 6px;
     }
     .form-group.full { grid-column: 1 / -1; }
+    .campo-resultado {
+      min-height: 38px;
+      display: flex;
+      align-items: center;
+      padding: 9px 12px;
+      border: 1.5px solid #d0d7e3;
+      border-radius: 6px;
+      background: #fafbfd;
+      font-size: 0.88rem;
+      line-height: 1.4;
+      color: #8a94a6;
+    }
+    [data-theme="dark"] .campo-resultado { background: #2a2a2a; border-color: #444; color: #999; }
     label {
       font-size: 0.82rem;
       font-weight: 600;
@@ -879,10 +892,10 @@
     <div class="dropdown-content" id="config-dropdown">
       <a onclick="showConfigSub('minha-conta')">Minha Conta</a>
       <a id="drop-usuarios" onclick="showConfigSub('usuarios')">Usuários</a>
-      <a onclick="showConfigSub('empresas')">Empresas</a>
-      <a onclick="showConfigSub('certificados-digitais')">Certificados Digitais</a>
-      <a onclick="showConfigSub('email')">E-mail</a>
-      <a onclick="showConfigSub('sistema')">Informações do Sistema</a>
+      <a id="drop-empresas" onclick="showConfigSub('empresas')">Empresas</a>
+      <a id="drop-certificados-digitais" onclick="showConfigSub('certificados-digitais')">Certificados Digitais</a>
+      <a id="drop-email" onclick="showConfigSub('email')">E-mail</a>
+      <a id="drop-sistema" onclick="showConfigSub('sistema')">Informações do Sistema</a>
     </div>
   </div>
 </nav>
@@ -891,6 +904,14 @@
 
   <!-- DASHBOARD -->
   <div id="page-dashboard" class="page active">
+    <div class="card" style="padding:12px 16px;margin-bottom:16px;">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <label style="margin:0;font-weight:600;font-size:0.85rem;white-space:nowrap;">Grupo de Empresas:</label>
+        <select id="dash-filtro-grupo" onchange="onDashGrupoChange()" style="padding:6px 10px;border:1px solid #ccd6e0;border-radius:6px;font-size:0.85rem;min-width:220px;background:#fff;">
+          <option value="">Todas as empresas</option>
+        </select>
+      </div>
+    </div>
     <div class="summary-cards" id="summary-cards"></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;margin-top:16px;">
       <div class="card" style="padding:20px;">
@@ -997,7 +1018,7 @@
           <thead>
             <tr id="lc-header-row">
               <th>Nº Licitação</th><th>Nome</th><th>CNPJ</th><th>Empresa</th><th>Objeto</th>
-              <th>Valor do Contrato</th><th>Vigência</th><th>Status</th><th>Anexo</th><th>Ações</th>
+              <th>Valor do Contrato</th><th>Índice Reajuste</th><th>Vigência</th><th>Status</th><th>Anexo</th><th>Ações</th>
             </tr>
           </thead>
           <tbody id="tb-licitacoes"></tbody>
@@ -1040,18 +1061,19 @@
 
   <!-- MODAL CERTIDAO -->
   <div class="modal-overlay" id="modal-certidao">
-    <div class="modal">
+    <div class="modal" style="max-width:860px;">
       <button class="modal-close" onclick="fecharModal('modal-certidao')">&times;</button>
       <h3 id="modal-certidao-title">Nova Certidão</h3>
       <input type="hidden" id="mc-id"/>
       <div class="form-grid">
         <div class="form-group">
-          <label>Empresa *</label>
-          <select id="mc-empresa"><option value="">Selecione...</option></select>
+          <label>CNPJ *</label>
+          <input type="text" id="mc-cnpj" placeholder="00.000.000/0001-00" oninput="onDocInput(this); onCnpjCertidaoLookup()" onblur="onDocBlur(this); onCnpjCertidaoLookup()" maxlength="18" required/>
+          <div id="mc-cnpj-msg" class="campo-resultado">Digite o CNPJ para localizar a empresa...</div>
         </div>
         <div class="form-group">
-          <label>CNPJ *</label>
-          <input type="text" id="mc-cnpj" placeholder="00.000.000/0001-00" oninput="onDocInput(this)" onblur="onDocBlur(this)" maxlength="18" required/>
+          <label>Empresa *</label>
+          <select id="mc-empresa" onchange="document.getElementById('mc-cnpj-msg').innerHTML=MSG_CNPJ_PLACEHOLDER"><option value="">Selecione...</option></select>
         </div>
         <div class="form-group">
           <label>Tipo da Certidão *</label>
@@ -1074,8 +1096,14 @@
           <input type="date" id="mc-emissao" required/>
         </div>
         <div class="form-group">
-          <label>Data de Validade *</label>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <label style="margin-bottom:0;" id="mc-validade-label">Data de Validade <span id="mc-validade-req" style="color:red;">*</span></label>
+            <button type="button" id="btn-toggle-sem-validade" onclick="toggleSemValidadeCertidao()" style="font-size:0.78rem; padding:3px 10px; background:#e2e8f0; color:#334155; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; font-weight:600; transition:all 0.2s; display:inline-flex; align-items:center; gap:5px;">
+              <span>🔓</span> Documento Sem Validade
+            </button>
+          </div>
           <input type="date" id="mc-validade" required/>
+          <input type="hidden" id="mc-sem-validade-val" value="0"/>
         </div>
         <div class="form-group">
           <label>Status</label>
@@ -1117,25 +1145,42 @@
           <input type="text" id="ml-nome" placeholder="Nome/descrição da licitação" oninput="toUpper(this)"/>
         </div>
         <div class="form-group">
-          <label>CNPJ *</label>
-          <input type="text" id="ml-cnpj" placeholder="00.000.000/0000-00" oninput="onDocInput(this)" onblur="onDocBlur(this)" maxlength="18" required/>
-        </div>
-        <div class="form-group">
           <label>Edital</label>
           <input type="text" id="ml-edital" placeholder="Nº do edital" oninput="toUpper(this)"/>
+        </div>
+        <div class="form-group" style="position:relative;">
+          <label>UF</label>
+          <input type="text" id="ml-uf" placeholder="Selecione..." oninput="onUfInput('ml')" onfocus="onUfFocus('ml')" onkeydown="onUfKeydown(event,'ml')" autocomplete="off"/>
+          <input type="hidden" id="ml-uf-val"/>
+          <div id="ml-uf-dropdown" class="cidade-dropdown"></div>
+        </div>
+        <div class="form-group" style="position:relative;">
+          <label>Cidade</label>
+          <input type="text" id="ml-cidade" placeholder="Selecione a UF primeiro..." oninput="onCidadeInput('ml')" onfocus="onCidadeFocus('ml')" onkeydown="onCidadeKeydown(event,'ml')" autocomplete="off"/>
+          <input type="hidden" id="ml-cidade-val"/>
+          <div id="ml-cidade-dropdown" class="cidade-dropdown"></div>
         </div>
         <div class="form-group full">
           <label>Objeto *</label>
           <input type="text" id="ml-objeto" placeholder="Descrição do objeto" oninput="toUpper(this)"/>
         </div>
         <div class="form-group">
+          <label>CNPJ *</label>
+          <input type="text" id="ml-cnpj" placeholder="00.000.000/0000-00" oninput="onDocInput(this); onCnpjLicitacaoLookup()" onblur="onDocBlur(this); onCnpjLicitacaoLookup()" maxlength="18" required/>
+          <div id="ml-cnpj-msg" class="campo-resultado">Digite o CNPJ para localizar a empresa...</div>
+        </div>
+        <div class="form-group">
           <label>Empresa Vencedora</label>
-          <select id="ml-empresa"><option value="">Selecione...</option></select>
+          <select id="ml-empresa" onchange="document.getElementById('ml-cnpj-msg').innerHTML=MSG_CNPJ_PLACEHOLDER"><option value="">Selecione...</option></select>
         </div>
 
         <div class="form-group">
           <label>Valor (R$)</label>
           <input type="number" id="ml-valor" placeholder="0,00" step="0.01"/>
+        </div>
+        <div class="form-group">
+          <label>Índice de Reajuste</label>
+          <input type="text" id="ml-indice-reajuste" placeholder="Ex: IPCA, INPC, IGP-M, CDI..." oninput="toUpper(this)"/>
         </div>
         <div class="form-group">
           <label>Data Homologação *</label>
@@ -1257,14 +1302,15 @@
       <div class="config-subnav">
         <button id="subnav-minha-conta" onclick="showConfigSub('minha-conta')">Minha Conta</button>
         <button id="subnav-usuarios" class="active" onclick="showConfigSub('usuarios')">Usuários</button>
-        <button onclick="showConfigSub('empresas')">Empresas</button>
-        <button onclick="showConfigSub('certificados-digitais')">Certificados Digitais</button>
-        <button onclick="showConfigSub('setores')">Setores</button>
-        <button onclick="showConfigSub('tipos')">Tipos Certidão</button>
-        <button onclick="showConfigSub('destinatarios')">Destinatários</button>
-        <button onclick="showConfigSub('email')">E-mail</button>
-        <button onclick="showConfigSub('historico')">Histórico</button>
-        <button onclick="showConfigSub('sistema')">Sistema</button>
+        <button id="subnav-grupos-empresas" onclick="showConfigSub('grupos-empresas')">Grupos de Empresas</button>
+        <button id="subnav-empresas" onclick="showConfigSub('empresas')">Empresas</button>
+        <button id="subnav-certificados-digitais" onclick="showConfigSub('certificados-digitais')">Certificados Digitais</button>
+        <button id="subnav-setores" onclick="showConfigSub('setores')">Setores</button>
+        <button id="subnav-tipos" onclick="showConfigSub('tipos')">Tipos Certidão</button>
+        <button id="subnav-destinatarios" onclick="showConfigSub('destinatarios')">Destinatários</button>
+        <button id="subnav-email" onclick="showConfigSub('email')">E-mail</button>
+        <button id="subnav-historico" onclick="showConfigSub('historico')">Histórico</button>
+        <button id="subnav-sistema" onclick="showConfigSub('sistema')">Sistema</button>
       </div>
     </div>
 
@@ -1321,6 +1367,61 @@
       </div>
     </div>
 
+
+    <!-- GRUPOS DE EMPRESAS -->
+    <div id="config-sub-grupos-empresas" class="config-section">
+      <div class="card">
+        <h2>Grupos de Empresas</h2>
+        <p style="margin-bottom:16px;color:#666;font-size:0.9rem;">Crie grupos de empresas para facilitar a atribuição de permissões. Ex: Grupo "Matriz", Grupo "Filiais SP", Grupo "Filiais RJ".</p>
+        <div style="display:flex;gap:8px;margin-bottom:16px;">
+          <button class="btn btn-primary" onclick="abrirModalGrupoEmpresas()">+ Novo Grupo</button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;min-width:700px;">
+            <thead>
+              <tr style="background:#eef2f7;">
+                <th style="width:80px;text-align:center;padding:10px;">#</th>
+                <th style="width:250px;text-align:left;padding:10px;">Nome</th>
+                <th style="width:300px;text-align:left;padding:10px;">Descrição</th>
+                <th style="width:120px;text-align:center;padding:10px;">Empresas</th>
+                <th style="width:120px;text-align:center;padding:10px;">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="tb-grupos-empresas"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL GRUPO EMPRESAS -->
+    <div class="modal-overlay" id="modal-grupo-empresas">
+      <div class="modal" style="max-width:700px;">
+        <button class="modal-close" onclick="fecharModal('modal-grupo-empresas')">&times;</button>
+        <h3 id="mge-title">Novo Grupo de Empresas</h3>
+        <input type="hidden" id="mge-id"/>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Nome *</label>
+            <input type="text" id="mge-nome" placeholder="Ex: Matriz, Filiais SP, Filiais RJ..." oninput="toUpper(this)" required/>
+          </div>
+          <div class="form-group full">
+            <label>Descrição</label>
+            <textarea id="mge-descricao" placeholder="Descrição do grupo..." oninput="toUpper(this)"></textarea>
+          </div>
+        </div>
+
+        <div style="margin-top:16px;border-top:1px solid #eee;padding-top:16px;">
+          <h4 style="margin-bottom:8px;">Empresas do Grupo</h4>
+          <div id="mge-empresas-checkboxes" style="max-height:340px;overflow:auto;border:1.5px solid #e0e7ef;border-radius:8px;"></div>
+        </div>
+
+        <div class="btn-row" style="margin-top:16px;">
+          <button class="btn btn-primary" onclick="salvarGrupoEmpresas()">Salvar Grupo</button>
+          <button class="btn" style="background:#e8eef4;color:#333;" onclick="fecharModal('modal-grupo-empresas')">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
     <!-- EMPRESAS -->
     <div id="config-sub-empresas" class="config-section">
       <div class="card">
@@ -1335,12 +1436,24 @@
             <label>CNPJ *</label>
             <input type="text" id="nova-empresa-cnpj" placeholder="00.000.000/0001-00" oninput="onDocInput(this)" onblur="onDocBlur(this)" maxlength="18"/>
           </div>
+          <div class="form-group" style="flex:0 0 100px;min-width:100px;">
+            <label>UF do CNPJ</label>
+            <select id="nova-empresa-uf">
+              <option value="">UF</option>
+              <option>AC</option><option>AL</option><option>AM</option><option>AP</option><option>BA</option>
+              <option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option>
+              <option>MG</option><option>MS</option><option>MT</option><option>PA</option><option>PB</option>
+              <option>PE</option><option>PI</option><option>PR</option><option>RJ</option><option>RN</option>
+              <option>RO</option><option>RR</option><option>RS</option><option>SC</option><option>SE</option>
+              <option>SP</option><option>TO</option>
+            </select>
+          </div>
           <button class="btn btn-primary" id="btn-salvar-empresa" onclick="salvarEmpresa()" style="margin-bottom:1px;">Adicionar</button>
         </div>
         <div style="overflow-x:auto">
           <table>
             <thead>
-              <tr><th>#</th><th>Empresa</th><th>CNPJ</th><th>Ações</th></tr>
+              <tr><th>#</th><th>Empresa</th><th>CNPJ</th><th>UF</th><th>Ações</th></tr>
             </thead>
             <tbody id="tb-empresas"></tbody>
           </table>
@@ -1433,6 +1546,11 @@
           <div class="form-group" style="flex:1;min-width:160px;">
             <label>Nome (opcional)</label>
             <input type="text" id="dest-nome" placeholder="Ex: João" oninput="toUpper(this)"/>
+          </div>
+          <div class="form-group" style="flex:1;min-width:200px;">
+            <label>CNPJ da Empresa</label>
+            <input type="text" id="dest-cnpj" placeholder="00.000.000/0001-00" oninput="onDocInput(this); onCnpjDestLookup()" onblur="onDocBlur(this); onCnpjDestLookup()" maxlength="18"/>
+            <div id="dest-cnpj-msg" style="font-size:0.78rem;margin-top:4px;line-height:1.4;"></div>
           </div>
           <div class="form-group" style="flex:1;min-width:200px;">
             <label>Empresas vinculadas</label>
@@ -1671,14 +1789,19 @@
     <div class="form-grid">
       <input type="hidden" id="mcd-id"/>
       <div class="form-group">
+        <label>CNPJ/CPF *</label>
+        <input type="text" id="mcd-cnpj" oninput="mascaraCnpjCpf(this);onCnpjCertificadoLookup()" maxlength="18"/>
+        <span id="mcd-cnpj-msg" class="campo-resultado" style="display:none;"></span>
+      </div>
+      <div class="form-group">
         <label>Empresa *</label>
-        <select id="mcd-empresa">
+        <select id="mcd-empresa" onchange="onEmpresaCertificadoChange()">
           <option value="">Selecione...</option>
         </select>
       </div>
       <div class="form-group">
-        <label>CNPJ/CPF *</label>
-        <input type="text" id="mcd-cnpj" oninput="mascaraCnpjCpf(this)" maxlength="18"/>
+        <label>UF</label>
+        <input type="text" id="mcd-uf" maxlength="2" placeholder="Ex.: SP" style="text-transform:uppercase;" />
       </div>
       <div class="form-group">
         <label>Data de Inclusão *</label>
@@ -1687,6 +1810,14 @@
       <div class="form-group">
         <label>Data de Validade *</label>
         <input type="date" id="mcd-vencimento" required/>
+      </div>
+      <div class="form-group full">
+        <label>Senha do Certificado</label>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input type="text" id="mcd-senha" style="flex:1;" placeholder="Senha usada na instalação do certificado"/>
+          <button type="button" class="btn" style="background:#e8eef4;color:#333;white-space:nowrap;" onclick="copiarSenhaCertificado()">Copiar</button>
+        </div>
+        <span style="font-size:0.75rem;color:#666;margin-top:4px;display:block;">Guardada para consulta de quem precisar instalar o certificado em outra máquina.</span>
       </div>
       <div class="form-group full">
         <label>Arquivo (.pdf, .jpg, .png) *</label>
@@ -1728,24 +1859,38 @@
       </div>
       <div class="form-group">
         <label>Perfil</label>
-        <select id="mu-perfil" onchange="popularEmpresaCheckboxes();popularSetorCheckboxes()">
-          <option value="user">Usuário</option>
-          <option value="setor_admin">Administrador de Setor</option>
-          <option value="admin">Administrador</option>
+        <select id="mu-role" onchange="carregarGruposEmpresasPorRole();popularSetorCheckboxes()">
+          <option value="role_usuario">Usu&aacute;rio</option>
+          <option value="role_admin_setor">Administrador de Setor</option>
+          <option value="role_admin">Administrador</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Grupo de Empresas</label>
+        <select id="mu-grupo-empresas" onchange="popularEmpresaCheckboxes()">
+          <option value="">Nenhuma (usar empresas individuais)</option>
         </select>
       </div>
       <div class="form-group full">
-        <label>Empresas com Acesso</label>
+        <label>Empresas (se não usar grupo)</label>
         <div id="mu-empresas-dual"></div>
-      </div>
-      <div class="form-group full">
-        <label>Setores com Acesso</label>
-        <div id="mu-setores-dual"></div>
       </div>
     </div>
     <div class="btn-row">
       <button class="btn btn-primary" onclick="salvarUsuario()">Salvar</button>
       <button class="btn" style="background:#e8eef4;color:#333;" onclick="fecharModal('modal-usuario')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: DETALHE DO DASHBOARD (clique nos gráficos) -->
+<div class="modal-overlay" id="modal-dash-detalhe">
+  <div class="modal" style="max-width:780px;">
+    <button class="modal-close" onclick="fecharModal('modal-dash-detalhe')">×</button>
+    <h3 id="mdd-titulo">Detalhe</h3>
+    <div id="mdd-lista" style="max-height:60vh;overflow:auto;margin-top:12px;"></div>
+    <div class="btn-row" style="margin-top:16px;">
+      <button class="btn" style="background:#e8eef4;color:#333;" onclick="fecharModal('modal-dash-detalhe')">Fechar</button>
     </div>
   </div>
 </div>
@@ -1946,17 +2091,19 @@
       <button class="chat-close" onclick="toggleChat()">×</button>
     </div>
     <div class="chat-messages" id="chat-messages">
-      <div class="chat-msg bot">Ola! Sou o assistente do sistema de Controle de Contratos. Como posso ajudar?</div>
+      <div class="chat-msg bot">Ola! Sou o assistente do sistema de Gestao de Contratos, Licitacoes e Certidoes. Como posso ajudar?</div>
     </div>
     <div class="chat-suggestions" id="chat-suggestions">
-      <button class="chat-sug-btn" onclick="enviarPergunta('Como cadastrar um contrato?')">Cadastrar contrato</button>
-      <button class="chat-sug-btn" onclick="enviarPergunta('Como registrar um pagamento?')">Registrar pagamento</button>
-      <button class="chat-sug-btn" onclick="enviarPergunta('Como filtrar contratos e pagamentos?')">Filtros</button>
+      <button class="chat-sug-btn" onclick="enviarPergunta('Como cadastrar uma certidao?')">Cadastrar certidao</button>
+      <button class="chat-sug-btn" onclick="enviarPergunta('Como cadastrar uma licitacao?')">Cadastrar licitacao</button>
+      <button class="chat-sug-btn" onclick="enviarPergunta('Como cadastrar um certificado digital?')">Certificado digital</button>
+      <button class="chat-sug-btn" onclick="enviarPergunta('Como funciona a senha do certificado?')">Senha do certificado</button>
+      <button class="chat-sug-btn" onclick="enviarPergunta('Como cadastrar uma empresa?')">Cadastrar empresa</button>
+      <button class="chat-sug-btn" onclick="enviarPergunta('Como gerenciar usuarios e permissoes?')">Usuarios e permissoes</button>
+      <button class="chat-sug-btn" onclick="enviarPergunta('Como configurar alertas por e-mail?')">Alertas por e-mail</button>
+      <button class="chat-sug-btn" onclick="enviarPergunta('O que mostra o Dashboard?')">Dashboard</button>
       <button class="chat-sug-btn" onclick="enviarPergunta('Como exportar para Excel?')">Exportar Excel</button>
-      <button class="chat-sug-btn" onclick="enviarPergunta('Como baixar varios pagamentos?')">Pagamentos em lote</button>
       <button class="chat-sug-btn" onclick="enviarPergunta('Como alterar minha senha?')">Alterar senha</button>
-      <button class="chat-sug-btn" onclick="enviarPergunta('Como visualizar anexos PDF?')">Visualizar PDF</button>
-      <button class="chat-sug-btn" onclick="enviarPergunta('Como ver o historico de acoes?')">Historico</button>
       <button class="chat-sug-btn" style="background:#24527a;color:white;border-color:#24527a;" onclick="voltarInicio()">Voltar ao inicio</button>
     </div>
     <div style="padding:0 16px 8px;">
@@ -2028,38 +2175,52 @@ function checkLogin() {
 }
 
 let currentUser = null;
-function mostrarApp(user) {
+async function mostrarApp(user) {
   currentUser = user;
   document.getElementById('login-content').style.display = 'none';
   document.getElementById('app-content').style.display = 'block';
   document.getElementById('header-user').textContent = user.full_name ? (user.full_name + ' (' + user.username + ')') : '';
+  // Carrega a matriz de permissões da role para que os botões de ação
+  // (Excluir etc.) sejam renderizados corretamente logo na abertura.
+  if (user.role_id) {
+    try { await carregarPermissoesRole(user.role_id); } catch (e) { console.error('Erro ao carregar permissões:', e); }
+  }
   const dropUsuarios = document.getElementById('drop-usuarios');
   const subnavUsuarios = document.getElementById('subnav-usuarios');
-  const isAdminOrSetorAdmin = user.role === 'admin' || user.role === 'setor_admin';
-  if (isAdminOrSetorAdmin) {
+  // Menu administrativo segue a matriz de permissões (role_permissions),
+  // a mesma que o backend exige nas rotas de /api/users etc. admin e
+  // setor_admin continuam passando pelo atalho de pode().
+  const podeUsuarios = pode('usuarios', 'read');
+  if (podeUsuarios) {
     if (dropUsuarios) dropUsuarios.style.display = '';
     if (subnavUsuarios) subnavUsuarios.style.display = '';
   } else {
     if (dropUsuarios) dropUsuarios.style.display = 'none';
     if (subnavUsuarios) subnavUsuarios.style.display = 'none';
   }
-  const ddDest = document.querySelector('#config-dropdown a[onclick*="destinatarios"]');
-  const subDest = document.querySelector('.config-subnav button[onclick*="destinatarios"]');
-  if (isAdminOrSetorAdmin) {
-    if (ddDest) ddDest.style.display = '';
-    if (subDest) subDest.style.display = '';
-  } else {
-    if (ddDest) ddDest.style.display = 'none';
-    if (subDest) subDest.style.display = 'none';
+  // Itens administrativos da Configuração também seguem a matriz de
+  // permissões (os mesmos recursos que o backend cobra nas rotas).
+  const secoesConfig = [
+    ['destinatarios', 'destinatarios', 'read'],
+    ['grupos-empresas', 'empresas', 'read']
+  ];
+  for (const [secao, recurso, acao] of secoesConfig) {
+    const visivel = pode(recurso, acao);
+    document.querySelectorAll('#config-dropdown a[onclick*="' + secao + '"], .config-subnav button[onclick*="' + secao + '"]')
+      .forEach(el => { el.style.display = visivel ? '' : 'none'; });
   }
   const isSetorAdmin = user.role === 'setor_admin';
   if (isSetorAdmin) {
-    const ddEmpresas = document.querySelector('#config-dropdown a[onclick*="empresas"]');
-    const ddEmail = document.querySelector('#config-dropdown a[onclick*="email"]');
-    const ddSistema = document.querySelector('#config-dropdown a[onclick*="sistema"]');
-    if (ddEmpresas) ddEmpresas.style.display = 'none';
-    if (ddEmail) ddEmail.style.display = 'none';
-    if (ddSistema) ddSistema.style.display = 'none';
+    // Seções que o administrador de setor não acessa: some do menu e da
+    // subnav (o redirecionamento em showConfigSub vira só uma rede de segurança).
+    // Empresas e Tipos Certidão ficam liberados para ele cadastrar.
+    ['certificados-digitais', 'setores', 'email', 'historico', 'sistema']
+      .forEach(sec => {
+        const dd = document.getElementById('drop-' + sec);
+        if (dd) dd.style.display = 'none';
+        const sn = document.getElementById('subnav-' + sec);
+        if (sn) sn.style.display = 'none';
+      });
   }
   loadDataFromDB();
 }
@@ -2337,7 +2498,7 @@ function saveTipos(arr) {
 }
 
 function getEmpresas() { return cachedEmpresas; }
-function saveEmpresas(arr) {
+function saveEmpresas(arr, enviarServidor = true) {
   cachedEmpresas = arr;
   try {
     if (!db) return;
@@ -2345,10 +2506,11 @@ function saveEmpresas(arr) {
     t.objectStore("empresas").clear();
     arr.forEach(a => t.objectStore("empresas").put(a));
   } catch (e) { console.error('[DB] saveEmpresas erro:', e.message); }
+  if (!enviarServidor) return;
   arr.forEach(a => {
     fetch('/api/companies', {
       method:'POST', headers:Object.assign({'Content-Type':'application/json'}, csrfHeaders()),
-      body:JSON.stringify({ id: a.id, nome: a.nome, cnpj: a.cnpj || '', active: a.active !== undefined ? a.active : 1 })
+      body:JSON.stringify({ id: a.id, nome: a.nome, cnpj: a.cnpj || '', uf_cnpj: a.uf_cnpj || '', active: a.active !== undefined ? a.active : 1 })
     }).catch(() => {});
   });
 }
@@ -2536,7 +2698,7 @@ function renderTiposConfig() {
     return;
   }
   const _user = JSON.parse(sessionStorage.getItem('user') || '{}');
-  const canDelete = _user.role === 'admin' || _user.role === 'setor_admin';
+  const canDelete = pode('tipos_certidao', 'delete');
   tb.innerHTML = tipos.map((t, i) => {
     const ativo = t.active !== 0;
     return `<tr${ativo ? '' : ' style="opacity:0.55"'}>
@@ -2632,11 +2794,17 @@ function popularEmpresaSelect() {
   if (atual) sel.value = atual;
 }
 
-function renderTagsDropdown(containerId, allItems, selectedIds, labelKey, filterActive) {
+function renderTagsDropdown(containerId, allItems, selectedIds, labelKey, filterActive, onChange) {
   const wrap = document.getElementById(containerId);
   if (!wrap) return;
-  const profile = document.getElementById('mu-perfil')?.value;
-  if (profile === 'admin') {
+  wrap._onChange = onChange || null;
+  // O atalho de "Acesso total" vale só pro formulário de usuário (mu-*),
+  // onde o perfil é lido de #mu-role — em outros usos (ex.: filtro do
+  // dashboard) o dropdown lista as empresas normalmente.
+  const isFormUsuario = containerId === 'mu-empresas-dual' || containerId === 'mu-setores-dual';
+  const role = isFormUsuario ? document.getElementById('mu-role')?.value : null;
+  const isAdmin = role === 'role_admin';
+  if (isAdmin) {
     wrap.innerHTML = '<div class="tags-dropdown-admin-msg">Acesso total — todas as opções disponíveis</div>';
     wrap._selectedIds = [];
     return;
@@ -2644,7 +2812,7 @@ function renderTagsDropdown(containerId, allItems, selectedIds, labelKey, filter
   const loggedUser = JSON.parse(sessionStorage.getItem('user') || '{}');
   const isLoggedSetorAdmin = loggedUser.role === 'setor_admin';
   let items = filterActive ? allItems.filter(i => i.active !== 0) : allItems;
-  if (isLoggedSetorAdmin && profile !== 'admin') {
+  if (isLoggedSetorAdmin && !isAdmin) {
     const rawLoggedSetorIds = getLoggedUserSetorIds();
     if (rawLoggedSetorIds && Array.isArray(rawLoggedSetorIds) && rawLoggedSetorIds.length > 0) {
       if (labelKey === 'nome' && items[0]?.id && cachedSectors.some(s => s.id === items[0]?.id)) {
@@ -2683,6 +2851,7 @@ function renderTagsDropdown(containerId, allItems, selectedIds, labelKey, filter
         e.stopPropagation();
         wrap._selectedIds = wrap._selectedIds.filter(id => id !== btn.dataset.id);
         render();
+        if (wrap._onChange) wrap._onChange(wrap._selectedIds);
       });
     });
   }
@@ -2717,6 +2886,7 @@ function renderTagsList(containerId, items, labelKey) {
         wrap._selectedIds = wrap._selectedIds.filter(id => id !== cb.value);
       }
       renderTagsDropdown_updateTags(containerId, items, labelKey);
+      if (wrap._onChange) wrap._onChange(wrap._selectedIds);
     });
   });
 }
@@ -2738,6 +2908,7 @@ function renderTagsDropdown_updateTags(containerId, items, labelKey) {
         wrap._selectedIds = wrap._selectedIds.filter(id => id !== btn.dataset.id);
         renderTagsDropdown_updateTags(containerId, items, labelKey);
         renderTagsList(containerId, items, labelKey);
+        if (wrap._onChange) wrap._onChange(wrap._selectedIds);
       });
     });
   }
@@ -2775,6 +2946,7 @@ function tagsSelectAll(containerId) {
   if (!wrap || !wrap._allItems) return;
   wrap._selectedIds = wrap._allItems.filter(i => i.active !== 0).map(i => i.id);
   renderTagsDropdown_updateTags(containerId, wrap._allItems, wrap._labelKey);
+  if (wrap._onChange) wrap._onChange(wrap._selectedIds);
 }
 
 function tagsClearAll(containerId) {
@@ -2782,13 +2954,36 @@ function tagsClearAll(containerId) {
   if (!wrap) return;
   wrap._selectedIds = [];
   renderTagsDropdown_updateTags(containerId, wrap._allItems || [], wrap._labelKey || 'nome');
+  if (wrap._onChange) wrap._onChange(wrap._selectedIds);
 }
 
 function popularEmpresaCheckboxes() {
   const container = document.getElementById('mu-empresas-dual');
   if (!container) return;
   const empresas = getEmpresas();
-  const isAdmin = document.getElementById('mu-perfil')?.value === 'admin';
+  const grupoId = document.getElementById('mu-grupo-empresas')?.value;
+  const role = document.getElementById('mu-role')?.value;
+  const isAdmin = role === 'role_admin';
+  
+  // Se tem grupo selecionado, buscar empresas do grupo
+  if (grupoId) {
+    fetch('/api/company-group-members?group_id=' + grupoId)
+      .then(r => r.json())
+      .then(members => {
+        const empresaIds = (Array.isArray(members) ? members : []).map(m => m.empresa_id);
+        const empresasGrupo = empresas.filter(e => empresaIds.includes(e.id));
+        if (!empresasGrupo.length && !isAdmin) {
+          container.innerHTML = '<span style="color:#aaa;font-size:0.85rem;">Nenhuma empresa neste grupo.</span>';
+          return;
+        }
+        container._allItems = empresasGrupo;
+        container._labelKey = 'nome';
+        renderTagsDropdown('mu-empresas-dual', empresasGrupo, container._selectedIds || [], 'nome', true);
+      });
+    return;
+  }
+  
+  // Sem grupo - mostrar todas empresas (comportamento antigo)
   if (!empresas.length && !isAdmin) {
     container.innerHTML = '<span style="color:#aaa;font-size:0.85rem;">Nenhuma empresa cadastrada.</span>';
     return;
@@ -2798,6 +2993,39 @@ function popularEmpresaCheckboxes() {
   renderTagsDropdown('mu-empresas-dual', empresas, container._selectedIds || [], 'nome', true);
 }
 
+async function carregarGruposEmpresasPorRole() {
+  const sel = document.getElementById('mu-grupo-empresas');
+  if (!sel) return;
+  const rolePerfil = document.getElementById('mu-role')?.value;
+  // Administrador: acesso total a todas as empresas — grupo de empresas não se aplica
+  if (rolePerfil === 'role_admin') {
+    sel.innerHTML = '<option value="">Todas as empresas (acesso total)</option>';
+    sel.value = '';
+    sel.disabled = true;
+    popularEmpresaCheckboxes();
+    return;
+  }
+  sel.disabled = false;
+  const atual = sel.value;
+  sel.innerHTML = '<option value="">Carregando...</option>';
+  try {
+    const gruposRes = await fetch('/api/company-groups').then(r => r.json());
+    const grupos = Array.isArray(gruposRes) ? gruposRes : [];
+    sel.innerHTML = '<option value="">Nenhuma (usar empresas individuais)</option>';
+    grupos.forEach(g => {
+      const opt = document.createElement('option');
+      opt.value = g.id;
+      opt.textContent = g.nome;
+      sel.appendChild(opt);
+    });
+    if (atual) sel.value = atual;
+    popularEmpresaCheckboxes();
+  } catch (e) {
+    console.error('Erro ao carregar grupos:', e);
+    sel.innerHTML = '<option value="">Erro ao carregar</option>';
+  }
+}
+
 let _editandoEmpresaId = null;
 
 function renderEmpresasConfig() {
@@ -2805,17 +3033,18 @@ function renderEmpresasConfig() {
   if (!tb) return;
   const empresas = getEmpresas();
   if (!empresas.length) {
-    tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#aaa;padding:32px">Nenhuma empresa cadastrada.</td></tr>';
+    tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#aaa;padding:32px">Nenhuma empresa cadastrada.</td></tr>';
     return;
   }
   const _user = JSON.parse(sessionStorage.getItem('user') || '{}');
-  const isAdmin = _user.role === 'admin' || _user.role === 'setor_admin';
+  const isAdmin = pode('empresas', 'delete');
   tb.innerHTML = empresas.map((e, i) => {
     const ativo = e.active !== 0;
     return `<tr${ativo ? '' : ' style="opacity:0.55"'}>
     <td>${i + 1}</td>
     <td>${escapeHtml(e.nome)} ${ativo ? '' : '<span class="badge badge-vencido">Inativo</span>'}</td>
     <td>${e.cnpj || '—'}</td>
+    <td>${escapeHtml(e.uf_cnpj || '—')}</td>
     <td style="display:flex;gap:4px;">
       <button class="btn btn-sm btn-primary" onclick="editarEmpresa('${e.id}')" style="padding:2px 8px;font-size:0.75rem;">Editar</button>
       <button class="btn btn-sm ${ativo ? 'btn-warning' : 'btn-secondary'}" onclick="inativarEmpresa('${e.id}')" style="padding:2px 8px;font-size:0.75rem;">${ativo ? 'Inativar' : 'Ativar'}</button>
@@ -2828,6 +3057,7 @@ function limparFormEmpresa() {
   _editandoEmpresaId = null;
   document.getElementById('nova-empresa-nome').value = '';
   document.getElementById('nova-empresa-cnpj').value = '';
+  document.getElementById('nova-empresa-uf').value = '';
   document.getElementById('btn-salvar-empresa').textContent = 'Adicionar';
 }
 
@@ -2837,12 +3067,14 @@ function editarEmpresa(id) {
   _editandoEmpresaId = id;
   document.getElementById('nova-empresa-nome').value = e.nome;
   document.getElementById('nova-empresa-cnpj').value = e.cnpj || '';
+  document.getElementById('nova-empresa-uf').value = e.uf_cnpj || '';
   document.getElementById('btn-salvar-empresa').textContent = 'Salvar';
 }
 
 function salvarEmpresa() {
   const nome = document.getElementById('nova-empresa-nome').value.trim();
   const cnpj = document.getElementById('nova-empresa-cnpj').value.trim();
+  const ufCnpj = document.getElementById('nova-empresa-uf').value.trim().toUpperCase();
   if (!nome) { mostrarToast('Informe o nome da empresa.', 'erro'); return; }
   if (!cnpj) { mostrarToast('Informe o CNPJ da empresa.', 'erro'); return; }
   const cnpjNumeros = cnpj.replace(/\D/g, '');
@@ -2850,17 +3082,28 @@ function salvarEmpresa() {
     mostrarToast('CNPJ/CPF invalido. Informe um CNPJ com 14 digitos ou CPF com 11 digitos.', 'erro'); return;
   }
   const empresas = getEmpresas();
-  const duplicata = empresas.find(e => e.nome.toLowerCase() === nome.toLowerCase() && e.id !== _editandoEmpresaId);
-  if (duplicata) { mostrarToast('Esta empresa ja existe.', 'erro'); return; }
+  // Duplicidade: CNPJ e a chave principal (filiais podem ter o mesmo nome)
+  const duplicata = empresas.find(e => {
+    if (e.id === _editandoEmpresaId) return false;
+    const eCnpj = (e.cnpj || '').replace(/\D/g, '');
+    if (eCnpj && eCnpj === cnpjNumeros) return true;
+    if (!eCnpj) return (e.nome || '').toLowerCase() === nome.toLowerCase();
+    return false;
+  });
+  if (duplicata) {
+    mostrarToast('Empresa duplicada: CNPJ ja cadastrado em "' + duplicata.nome + '".', 'erro');
+    return;
+  }
 
   if (_editandoEmpresaId) {
     const idx = empresas.findIndex(e => e.id === _editandoEmpresaId);
     if (idx !== -1) {
       empresas[idx].nome = nome;
       empresas[idx].cnpj = cnpj;
+      empresas[idx].uf_cnpj = ufCnpj;
     }
   } else {
-    empresas.push({ id: uid(), nome, cnpj, active: 1, criadoEm: new Date().toISOString() });
+    empresas.push({ id: uid(), nome, cnpj, uf_cnpj: ufCnpj, active: 1, criadoEm: new Date().toISOString() });
   }
   saveEmpresas(empresas);
   limparFormEmpresa();
@@ -2910,7 +3153,7 @@ function renderCertificadosDigitais() {
   const certificados = getCertificadosDigitais(empresaFilter || null);
   const empresas = getEmpresas();
   const _user = JSON.parse(sessionStorage.getItem('user') || '{}');
-  const isAdm = _user.role === 'admin';
+  const isAdm = pode('certificados_digitais', 'delete');
   if (!certificados.length) {
     tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#aaa;padding:32px">Nenhum certificado encontrado.</td></tr>';
     return;
@@ -2933,6 +3176,7 @@ function renderCertificadosDigitais() {
     <td>${c.data_vencimento ? formatDate(c.data_vencimento) + ' ' + vencBadge : '—'}</td>
     <td style="display:flex;gap:4px;">
       <button class="btn btn-sm btn-primary" onclick="editarCertificado('${c.id}')" style="padding:2px 8px;font-size:0.75rem;">Editar</button>
+      ${c.senha ? `<button class="btn btn-sm" style="background:#e8eef4;color:#333;padding:2px 8px;font-size:0.75rem;" onclick="verSenhaCertificado('${c.id}')">Senha</button>` : ''}
       ${isAdm ? `<button class="btn btn-sm btn-danger" onclick="excluirCertificado('${c.id}')" style="padding:2px 8px;font-size:0.75rem;">Excluir</button>` : ''}
     </td>
   </tr>`}).join('');
@@ -2966,24 +3210,32 @@ function abrirModalCertificado(certId) {
   _editandoCertificadoId = certId || null;
   document.getElementById('mcd-id').value = certId || '';
   document.getElementById('mcd-cnpj').value = '';
+  document.getElementById('mcd-uf').value = '';
+  document.getElementById('mcd-senha').value = '';
   document.getElementById('mcd-data-inclusao').value = '';
   document.getElementById('mcd-vencimento').value = '';
   document.getElementById('mcd-arquivo').value = '';
   document.getElementById('mcd-arquivo-info').style.display = 'none';
   document.getElementById('mcd-arquivo-info').textContent = '';
   popularEmpresaCertificadoSelect();
+  const mcdMsg = document.getElementById('mcd-cnpj-msg');
+  if (mcdMsg) { mcdMsg.innerHTML = MSG_CNPJ_PLACEHOLDER; mcdMsg.style.color = ''; }
+  document.getElementById('mcd-empresa').disabled = false;
   if (certId) {
     const c = cachedCertificadosDigitais.find(x => x.id === certId);
     if (c) {
       document.getElementById('mcd-titulo').textContent = 'Editar Certificado Digital';
       document.getElementById('mcd-empresa').value = c.empresa_id;
       document.getElementById('mcd-cnpj').value = c.cnpj || '';
+      document.getElementById('mcd-uf').value = (c.uf || '');
+      document.getElementById('mcd-senha').value = (c.senha || '');
       document.getElementById('mcd-data-inclusao').value = c.data_inclusao || '';
       document.getElementById('mcd-vencimento').value = c.data_vencimento || '';
       if (c.arquivo_nome) {
         document.getElementById('mcd-arquivo-info').style.display = 'block';
         document.getElementById('mcd-arquivo-info').textContent = 'Arquivo atual: ' + c.arquivo_nome;
       }
+      onCnpjCertificadoLookup();
     }
   } else {
     document.getElementById('mcd-titulo').textContent = 'Novo Certificado Digital';
@@ -2995,9 +3247,86 @@ function editarCertificado(id) {
   abrirModalCertificado(id);
 }
 
+function verSenhaCertificado(id) {
+  const c = cachedCertificadosDigitais.find(x => x.id === id);
+  if (!c || !c.senha) { mostrarToast('Este certificado não tem senha cadastrada.', 'erro'); return; }
+  if (confirm('Senha do certificado: ' + c.senha + '\n\nCopiar para a área de transferência?')) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(c.senha).then(() => mostrarToast('Senha copiada!', 'sucesso')).catch(() => fallbackCopiarSenha(c.senha));
+    } else {
+      fallbackCopiarSenha(c.senha);
+    }
+  }
+}
+
+function copiarSenhaCertificado() {
+  const inp = document.getElementById('mcd-senha');
+  if (!inp || !inp.value) { mostrarToast('Nenhuma senha para copiar.', 'erro'); return; }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(inp.value).then(() => mostrarToast('Senha copiada!', 'sucesso')).catch(() => fallbackCopiarSenha(inp.value));
+  } else {
+    fallbackCopiarSenha(inp.value);
+  }
+}
+
+function fallbackCopiarSenha(texto) {
+  const ta = document.createElement('textarea');
+  ta.value = texto;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); mostrarToast('Senha copiada!', 'sucesso'); }
+  catch (e) { mostrarToast('Não foi possível copiar a senha.', 'erro'); }
+  document.body.removeChild(ta);
+}
+
+function onCnpjCertificadoLookup() {
+  const input = document.getElementById('mcd-cnpj');
+  const msg = document.getElementById('mcd-cnpj-msg');
+  const sel = document.getElementById('mcd-empresa');
+  const ufInput = document.getElementById('mcd-uf');
+  if (!input || !msg || !sel) return;
+  const digitos = (input.value || '').replace(/\D/g, '');
+  if (digitos.length !== 14 && digitos.length !== 11) { sel.disabled = false; msg.innerHTML = MSG_CNPJ_PLACEHOLDER; msg.style.color = ''; return; }
+  const empresas = getEmpresas().filter(e => e.active !== 0);
+  const encontrada = empresas.find(e => (e.cnpj || '').replace(/\D/g, '') === digitos);
+  if (encontrada) {
+    sel.value = encontrada.id;
+    sel.disabled = true;
+    const ufEmp = (encontrada.uf_cnpj || '').toUpperCase().trim();
+    if (ufInput) ufInput.value = ufEmp;
+    msg.innerHTML = '<span style="color:#2e7d52;font-weight:600;">&#10003; Empresa encontrada: ' + escapeHtml(encontrada.nome) + (ufEmp ? ' &middot; UF ' + escapeHtml(ufEmp) : '') + '</span>';
+    msg.style.color = '';
+  } else {
+    sel.disabled = false;
+    if (!document.getElementById('mcd-id').value) {
+      sel.value = '';
+      if (ufInput) ufInput.value = '';
+      msg.innerHTML = '<span style="color:#b45309;">CNPJ não encontrado. <a href="javascript:void(0)" onclick="fecharModal(\'modal-certificado\');showConfigSub(\'empresas\')" style="color:#1d4ed8;font-weight:600;text-decoration:underline;">Cadastre a empresa em Empresas &rsaquo;</a></span>';
+      msg.style.color = '';
+    } else {
+      msg.innerHTML = MSG_CNPJ_PLACEHOLDER;
+      msg.style.color = '';
+    }
+  }
+}
+
+function onEmpresaCertificadoChange() {
+  const sel = document.getElementById('mcd-empresa');
+  const ufInput = document.getElementById('mcd-uf');
+  if (!sel || !ufInput) return;
+  if (sel.disabled) return;
+  const emp = getEmpresas().find(e => e.id === sel.value);
+  const ufEmp = ((emp && emp.uf_cnpj) || '').toUpperCase().trim();
+  ufInput.value = ufEmp;
+}
+
 async function salvarCertificado() {
   const empresa_id = document.getElementById('mcd-empresa').value;
   const cnpj = document.getElementById('mcd-cnpj').value.trim();
+  const uf = (document.getElementById('mcd-uf').value || '').trim().toUpperCase();
+  const senha = document.getElementById('mcd-senha').value;
   const data_inclusao = document.getElementById('mcd-data-inclusao').value;
   const data_vencimento = document.getElementById('mcd-vencimento').value;
   const fileInput = document.getElementById('mcd-arquivo');
@@ -3028,7 +3357,7 @@ async function salvarCertificado() {
   }
 
   const certificado = {
-    empresa_id, cnpj, data_inclusao, data_vencimento, arquivo_nome, arquivo_base64
+    empresa_id, cnpj, uf, senha, data_inclusao, data_vencimento, arquivo_nome, arquivo_base64
   };
 
   const editId = _editandoCertificadoId;
@@ -3098,7 +3427,7 @@ function renderPgCertificadosDigitais() {
   const certificados = getCertificadosDigitais(empresaFilter || null);
   const empresas = getEmpresas();
   const _user = JSON.parse(sessionStorage.getItem('user') || '{}');
-  const isAdm = _user.role === 'admin';
+  const isAdm = pode('certificados_digitais', 'delete');
   if (!certificados.length) {
     tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#aaa;padding:32px">Nenhum certificado encontrado.</td></tr>';
     return;
@@ -3121,6 +3450,7 @@ function renderPgCertificadosDigitais() {
     <td>${c.data_vencimento ? formatDate(c.data_vencimento) + ' ' + vencBadge : '—'}</td>
     <td style="display:flex;gap:4px;">
       <button class="btn btn-sm btn-primary" onclick="editarCertificado('${c.id}')" style="padding:2px 8px;font-size:0.75rem;">Editar</button>
+      ${c.senha ? `<button class="btn btn-sm" style="background:#e8eef4;color:#333;padding:2px 8px;font-size:0.75rem;" onclick="verSenhaCertificado('${c.id}')">Senha</button>` : ''}
       ${isAdm ? `<button class="btn btn-sm btn-danger" onclick="excluirCertificado('${c.id}')" style="padding:2px 8px;font-size:0.75rem;">Excluir</button>` : ''}
     </td>
   </tr>`}).join('');
@@ -3138,7 +3468,7 @@ function renderSetoresConfig() {
     return;
   }
   const _user = JSON.parse(sessionStorage.getItem('user') || '{}');
-  const isAdmin = _user.role === 'admin' || _user.role === 'setor_admin';
+  const isAdmin = pode('setores', 'delete');
   tb.innerHTML = sectors.map((s, i) => {
     const ativo = s.active !== 0;
     return `<tr${ativo ? '' : ' style="opacity:0.55"'}>
@@ -3223,7 +3553,8 @@ function popularSetorCheckboxes() {
   const container = document.getElementById('mu-setores-dual');
   if (!container) return;
   const sectors = getSectors();
-  const isAdmin = document.getElementById('mu-perfil')?.value === 'admin';
+  const role = document.getElementById('mu-role')?.value;
+  const isAdmin = role === 'role_admin';
   if (!sectors.length && !isAdmin) {
     container.innerHTML = '<span style="color:#aaa;font-size:0.85rem;">Nenhum setor cadastrado.</span>';
     return;
@@ -3306,10 +3637,28 @@ function renderDestinatariosConfig() {
   }).join('');
 }
 
+function onCnpjDestLookup() {
+  const input = document.getElementById('dest-cnpj');
+  const msg = document.getElementById('dest-cnpj-msg');
+  const container = document.getElementById('dest-empresas-checkboxes');
+  if (!input || !msg || !container) return;
+  const digitos = (input.value || '').replace(/\D/g, '');
+  if (digitos.length !== 14 && digitos.length !== 11) { msg.innerHTML = ''; return; }
+  const encontrada = getEmpresas().filter(e => e.active !== 0).find(e => (e.cnpj || '').replace(/\D/g, '') === digitos);
+  if (encontrada) {
+    container.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = (cb.value === encontrada.id); });
+    msg.innerHTML = '<span style="color:#2e7d52;font-weight:600;">&#10003; Empresa encontrada: ' + escapeHtml(encontrada.nome) + '</span>';
+  } else {
+    msg.innerHTML = '<span style="color:#b45309;">CNPJ não encontrado. <a href="javascript:void(0)" onclick="showConfigSub(\'empresas\')" style="color:#1d4ed8;font-weight:600;text-decoration:underline;">Cadastre a empresa em Empresas &rsaquo;</a></span>';
+  }
+}
+
 function limparFormDestinatario() {
   _editandoDestId = null;
   document.getElementById('dest-email').value = '';
   document.getElementById('dest-nome').value = '';
+  document.getElementById('dest-cnpj').value = '';
+  document.getElementById('dest-cnpj-msg').innerHTML = '';
   const container = document.getElementById('dest-empresas-checkboxes');
   container.dataset.selected = '[]';
   const containerSets = document.getElementById('dest-setores-checkboxes');
@@ -3327,6 +3676,8 @@ function editarDestinatario(id) {
   _editandoDestId = id;
   document.getElementById('dest-email').value = d.email;
   document.getElementById('dest-nome').value = d.nome || '';
+  document.getElementById('dest-cnpj').value = '';
+  document.getElementById('dest-cnpj-msg').innerHTML = '';
   const container = document.getElementById('dest-empresas-checkboxes');
   container.dataset.selected = JSON.stringify(d.empresaIds || []);
   const containerSets = document.getElementById('dest-setores-checkboxes');
@@ -3365,7 +3716,27 @@ function salvarDestinatario() {
   limparFormDestinatario();
   renderDestinatariosConfig();
   mostrarToast('Destinatario salvo com sucesso!', 'sucesso');
-  if (SYNC_ENABLED) syncToServer().catch(() => {});
+  // Salva direto no servidor (não depende só do sync em lote)
+  const rec = dests.find(d => d.email.toLowerCase() === email.toLowerCase());
+  if (rec) _salvarDestinatarioServidor(rec);
+}
+
+function _salvarDestinatarioServidor(rec) {
+  return getCsrfToken().then(() =>
+    fetch('/api/destinatarios', {
+      method: 'POST',
+      headers: csrfHeaders(),
+      body: JSON.stringify({
+        id: rec.id, email: rec.email, nome: rec.nome || '',
+        empresaIds: rec.empresaIds || [], setores: rec.setores || [], alertas: rec.alertas || [],
+        updated_at: rec.updated_at || now(), csrf_token: csrfToken
+      })
+    })
+  ).then(r => r.json()).then(d => {
+    if (d && d.ok === false) mostrarToast('Erro ao salvar no servidor: ' + (d.erro || 'tente novamente'), 'erro');
+  }).catch(() => {
+    if (SYNC_ENABLED) syncToServer().catch(() => {});
+  });
 }
 
 function excluirDestinatario(id) {
@@ -3377,7 +3748,12 @@ function excluirDestinatario(id) {
   limparFormDestinatario();
   renderDestinatariosConfig();
   mostrarToast('Destinatario excluido.', 'sucesso');
-  if (SYNC_ENABLED) syncToServer().catch(() => {});
+  // Exclusão direta no servidor
+  getCsrfToken().then(() =>
+    fetch('/api/destinatarios/' + encodeURIComponent(id), { method: 'DELETE', headers: csrfHeaders() })
+  ).catch(() => {
+    if (SYNC_ENABLED) syncToServer().catch(() => {});
+  });
 }
 
 function syncToServer() {
@@ -3388,6 +3764,7 @@ function syncToServer() {
     destinatarios: (cachedDestinatarios || []).map(r => prepareRecord(r)),
     certidoes: (cachedCertidoes || []).map(r => prepareRecord(r)),
     licitacoes: (cachedLicitacoes || []).map(r => prepareRecord(r)),
+    role_permissions: rolePermissionsCache || [],
     last_sync_at: _lastSyncAt
   };
   let payloadStr = JSON.stringify(fullSnapshot);
@@ -3418,7 +3795,7 @@ function syncToServer() {
     nukeFiles(fullSnapshot.licitacoes, ['arquivos']);
     payloadStr = JSON.stringify(fullSnapshot);
   }
-  const total = fullSnapshot.destinatarios.length + fullSnapshot.certidoes.length + fullSnapshot.licitacoes.length;
+  const total = fullSnapshot.destinatarios.length + fullSnapshot.certidoes.length + fullSnapshot.licitacoes.length + (fullSnapshot.user_permissions || []).length;
   console.log('[SYNC-POST] Enviando TODOS:', total, 'registros, payload:', Math.round(payloadStr.length/1024), 'KB', skippedFiles > 0 ? '(arquivos omitidos: ' + skippedFiles + ')' : '(com anexos)');
   return getCsrfToken().then(() => {
     return fetch('/api/sync', {
@@ -3499,6 +3876,7 @@ function loadFromServer() {
       return {
         id: lc.id, numeroLicitacao: lc.numero_licitacao, edital: lc.edital,
         nomeLicitacao: lc.nome_licitacao || '', cnpj: lc.cnpj || '',
+        uf: lc.uf || '', cidade: lc.cidade || '',
         objeto: lc.objeto, empresaId: lc.empresa_id, contratoId: lc.contrato_id,
         valor: lc.valor, dataHomologacao: lc.data_homologacao,
         dataInicio: lc.data_inicio, dataFim: lc.data_fim,
@@ -3521,14 +3899,15 @@ function loadFromServer() {
     const activePage = document.querySelector('.page.active');
     if (activePage) {
       const id = activePage.id.replace('page-', '');
-      if (id === 'dashboard') renderDashboard();
+      if (id === 'dashboard') { popularFiltroGrupoDash(); renderDashboard(); }
     }
     if (data.empresas) {
       const serverEmpresas = data.empresas.map(e => ({
-        id: e.id, nome: e.nome, cnpj: e.cnpj || '',
+        id: e.id, nome: e.nome, cnpj: e.cnpj || '', uf_cnpj: e.uf_cnpj || '',
         criadoEm: e.criado_em, active: e.active !== undefined ? e.active : 1
       }));
-      cachedEmpresas = serverEmpresas; saveEmpresas(serverEmpresas);
+      // Apenas atualiza cache/local - NAO reenvia ao servidor (apagaria uf_cnpj)
+      cachedEmpresas = serverEmpresas; saveEmpresas(serverEmpresas, false);
     }
     if (data.sectors && data.sectors.length) {
       const serverSectors = data.sectors.map(s => ({
@@ -3553,6 +3932,13 @@ function loadFromServer() {
           }
         } catch (e) { console.error('[DB] user_setores loadFromServer erro:', e.message); }
       }
+    if (data.role_permissions && data.role_permissions.length) {
+      const user = JSON.parse(sessionStorage.getItem('user') || '{}');
+      const roleId = user.role_id || 'role_usuario';
+      const rolePerms = data.role_permissions.filter(p => p.role_id === roleId);
+      rolePermissionsCache = rolePerms;
+      console.log('[SYNC] Role permissions loaded:', rolePerms.length);
+    }
     setTimeout(checkNotificacoes, 500);
   }).catch(e => {
     console.error('[SYNC] loadFromServer falhou:', e);
@@ -3647,9 +4033,58 @@ const TIPOS_CERTIDAO = [
 const UFS_BRASIL = ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'];
 const UF_NOMES = {'AC':'Acre','AL':'Alagoas','AM':'Amazonas','AP':'Amapá','BA':'Bahia','CE':'Ceará','DF':'Distrito Federal','ES':'Espírito Santo','GO':'Goiás','MA':'Maranhão','MG':'Minas Gerais','MS':'Mato Grosso do Sul','MT':'Mato Grosso','PA':'Pará','PB':'Paraíba','PE':'Pernambuco','PI':'Piauí','PR':'Paraná','RJ':'Rio de Janeiro','RN':'Rio Grande do Norte','RO':'Rondônia','RR':'Roraima','RS':'Rio Grande do Sul','SC':'Santa Catarina','SE':'Sergipe','SP':'São Paulo','TO':'Tocantins'};
 
+let rolePermissionsCache = null;
+async function carregarPermissoesRole(roleId) {
+  if (!roleId) return [];
+  try {
+    const res = await fetch('/api/role-permissions?role_id=' + roleId);
+    const data = await res.json();
+    rolePermissionsCache = Array.isArray(data) ? data : [];
+    return rolePermissionsCache;
+  } catch (e) {
+    console.error('Erro ao carregar permissões da role:', e);
+    return [];
+  }
+}
+
+function temPermissao(userId, resource, action, empresaId) {
+  const user = JSON.parse(sessionStorage.getItem('user') || '{}');
+  if (user.id === userId && user.role === 'admin') return true;
+  if (!rolePermissionsCache || !rolePermissionsCache.length) return false;
+  // Admin role has wildcard permissions
+  if (rolePermissionsCache.some(p => p.resource === '*' && p.action === '*')) return true;
+  return rolePermissionsCache.some(p =>
+    p.resource === resource &&
+    p.action === action &&
+    (!p.empresa_id || (empresaId && p.empresa_id === empresaId))
+  );
+}
+
+// Verifica se o usuário logado tem uma permissão na matriz (role_permissions).
+// Admin/setor_admin legados passam sempre; demais consultam rolePermissionsCache
+// (populado em mostrarApp via carregarPermissoesRole).
+function pode(resource, action) {
+  const u = (typeof currentUser !== 'undefined' && currentUser) ? currentUser : JSON.parse(sessionStorage.getItem('user') || '{}');
+  if (u.role === 'admin' || u.role === 'setor_admin') return true;
+  if (!u.id) return false;
+  return temPermissao(u.id, resource, action);
+}
+
+function temAcessoEmpresa(userId, empresaId) {
+  if (!empresaId) return true;
+  const user = JSON.parse(sessionStorage.getItem('user') || '{}');
+  if (user.id === userId && user.role === 'admin') return true;
+  if (!rolePermissionsCache || !rolePermissionsCache.length) return false;
+  if (rolePermissionsCache.some(p => p.resource === '*' && p.action === '*')) return true;
+  return rolePermissionsCache.some(p =>
+    (!p.empresa_id || p.empresa_id === empresaId) &&
+    p.action === 'read'
+  );
+}
+
 let UF_CIDADES_CACHE = null;
 async function carregarCidades() {
-  if (UF_CIDADES_CACHE) return UF_CIDADES_CACHE;
+  if (UF_CIDADES_CACHE && Object.keys(UF_CIDADES_CACHE).length > 0) return UF_CIDADES_CACHE;
   try {
     const resp = await fetch('/api/cidades');
     UF_CIDADES_CACHE = await resp.json();
@@ -3662,43 +4097,40 @@ async function carregarCidades() {
 let _ufsAtuais = [];
 let _ufHighlight = -1;
 
-function popularUfSelect() {
-  const input = document.getElementById('mc-uf');
-  const val = document.getElementById('mc-uf-val');
+function popularUfSelect(prefix = 'mc') {
+  const input = document.getElementById(prefix + '-uf');
+  const val = document.getElementById(prefix + '-uf-val');
   if (!input) return;
   const atual = val.value;
   input.value = '';
   input.placeholder = 'Pesquisar ou selecionar...';
   val.value = '';
   _ufsAtuais = UFS_BRASIL.map(uf => uf + ' - ' + UF_NOMES[uf]);
-  fecharDropdownUf();
+  fecharDropdownUf(prefix);
   if (atual && UFS_BRASIL.includes(atual)) {
     input.value = atual + ' - ' + UF_NOMES[atual];
     val.value = atual;
   }
 }
 
-function onUfInput() {
-  const input = document.getElementById('mc-uf');
-  const val = document.getElementById('mc-uf-val');
+function onUfInput(prefix = 'mc') {
+  const input = document.getElementById(prefix + '-uf');
   const termo = input.value.trim().toLowerCase();
-  val.value = '';
-  popularCidadesSelect();
   _ufHighlight = -1;
-  if (!termo) { fecharDropdownUf(); return; }
+  if (!termo) { fecharDropdownUf(prefix); return; }
   const filtradas = _ufsAtuais.filter(u => u.toLowerCase().includes(termo));
-  mostrarDropdownUf(filtradas);
+  mostrarDropdownUf(filtradas, prefix);
 }
 
-function onUfFocus() {
-  const input = document.getElementById('mc-uf');
+function onUfFocus(prefix = 'mc') {
+  const input = document.getElementById(prefix + '-uf');
   const termo = input.value.trim().toLowerCase();
   const filtradas = termo ? _ufsAtuais.filter(u => u.toLowerCase().includes(termo)) : _ufsAtuais;
-  mostrarDropdownUf(filtradas);
+  mostrarDropdownUf(filtradas, prefix);
 }
 
-function mostrarDropdownUf(lista) {
-  const dd = document.getElementById('mc-uf-dropdown');
+function mostrarDropdownUf(lista, prefix = 'mc') {
+  const dd = document.getElementById(prefix + '-uf-dropdown');
   if (!dd) return;
   dd.innerHTML = '';
   _ufHighlight = -1;
@@ -3709,31 +4141,31 @@ function mostrarDropdownUf(lista) {
     div.textContent = u;
     div.dataset.uf = u.split(' - ')[0];
     div.dataset.idx = i;
-    div.addEventListener('mousedown', (e) => { e.preventDefault(); selecionarUf(u); });
-    div.addEventListener('mouseenter', () => { _ufHighlight = i; atualizarHighlightUf(); });
+    div.addEventListener('mousedown', (e) => { e.preventDefault(); selecionarUf(u, prefix); });
+    div.addEventListener('mouseenter', () => { _ufHighlight = i; atualizarHighlightUf(prefix); });
     dd.appendChild(div);
   });
   dd.classList.add('open');
 }
 
-function fecharDropdownUf() {
-  const dd = document.getElementById('mc-uf-dropdown');
+function fecharDropdownUf(prefix = 'mc') {
+  const dd = document.getElementById(prefix + '-uf-dropdown');
   if (dd) { dd.classList.remove('open'); dd.innerHTML = ''; }
   _ufHighlight = -1;
 }
 
-function selecionarUf(ufTexto) {
-  const input = document.getElementById('mc-uf');
-  const val = document.getElementById('mc-uf-val');
+function selecionarUf(ufTexto, prefix = 'mc') {
+  const input = document.getElementById(prefix + '-uf');
+  const val = document.getElementById(prefix + '-uf-val');
   const ufSigla = ufTexto.split(' - ')[0];
   input.value = ufTexto;
   val.value = ufSigla;
-  fecharDropdownUf();
-  popularCidadesSelect();
+  fecharDropdownUf(prefix);
+  popularCidadesSelect(prefix);
 }
 
-function atualizarHighlightUf() {
-  const dd = document.getElementById('mc-uf-dropdown');
+function atualizarHighlightUf(prefix = 'mc') {
+  const dd = document.getElementById(prefix + '-uf-dropdown');
   if (!dd) return;
   dd.querySelectorAll('.cidade-dropdown-item').forEach((el, i) => {
     el.classList.toggle('highlighted', i === _ufHighlight);
@@ -3742,31 +4174,33 @@ function atualizarHighlightUf() {
   if (hl) hl.scrollIntoView({ block: 'nearest' });
 }
 
-function onUfKeydown(e) {
-  const dd = document.getElementById('mc-uf-dropdown');
+function onUfKeydown(e, prefix = 'mc') {
+  const dd = document.getElementById(prefix + '-uf-dropdown');
   if (!dd || !dd.classList.contains('open')) return;
   const items = dd.querySelectorAll('.cidade-dropdown-item');
   if (!items.length) return;
-  if (e.key === 'ArrowDown') { e.preventDefault(); _ufHighlight = Math.min(_ufHighlight + 1, items.length - 1); atualizarHighlightUf(); }
-  else if (e.key === 'ArrowUp') { e.preventDefault(); _ufHighlight = Math.max(_ufHighlight - 1, 0); atualizarHighlightUf(); }
-  else if (e.key === 'Enter' && _ufHighlight >= 0) { e.preventDefault(); selecionarUf(items[_ufHighlight].textContent); }
-  else if (e.key === 'Escape') { fecharDropdownUf(); }
+  if (e.key === 'ArrowDown') { e.preventDefault(); _ufHighlight = Math.min(_ufHighlight + 1, items.length - 1); atualizarHighlightUf(prefix); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); _ufHighlight = Math.max(_ufHighlight - 1, 0); atualizarHighlightUf(prefix); }
+  else if (e.key === 'Enter' && _ufHighlight >= 0) { e.preventDefault(); selecionarUf(items[_ufHighlight].textContent, prefix); }
+  else if (e.key === 'Escape') { fecharDropdownUf(prefix); }
 }
 
 document.addEventListener('click', (e) => {
-  if (!e.target.closest('#mc-uf') && !e.target.closest('#mc-uf-dropdown')) fecharDropdownUf();
+  ['mc', 'ml'].forEach(p => {
+    if (!e.target.closest('#' + p + '-uf') && !e.target.closest('#' + p + '-uf-dropdown')) fecharDropdownUf(p);
+  });
 });
 
 let _cidadesAtuais = [];
 let _cidadeHighlight = -1;
 
-async function popularCidadesSelect() {
-  const input = document.getElementById('mc-cidade');
-  const val = document.getElementById('mc-cidade-val');
-  const dd = document.getElementById('mc-cidade-dropdown');
+async function popularCidadesSelect(prefix = 'mc') {
+  const input = document.getElementById(prefix + '-cidade');
+  const val = document.getElementById(prefix + '-cidade-val');
+  const dd = document.getElementById(prefix + '-cidade-dropdown');
   if (!input) return;
-  const uf = document.getElementById('mc-uf-val')?.value || '';
-  if (!uf) { input.value = ''; input.placeholder = 'Selecione a UF primeiro...'; val.value = ''; _cidadesAtuais = []; fecharDropdownCidade(); return; }
+  const uf = document.getElementById(prefix + '-uf-val')?.value || '';
+  if (!uf) { input.value = ''; input.placeholder = 'Selecione a UF primeiro...'; val.value = ''; _cidadesAtuais = []; fecharDropdownCidade(prefix); return; }
   const dados = await carregarCidades();
   const cidades = (dados[uf] || []).slice().sort((a, b) => a.localeCompare(b, 'pt-BR'));
   _cidadesAtuais = cidades;
@@ -3774,43 +4208,43 @@ async function popularCidadesSelect() {
   input.value = '';
   input.placeholder = 'Pesquisar ou selecionar...';
   val.value = '';
-  fecharDropdownCidade();
+  fecharDropdownCidade(prefix);
   if (atual && cidades.includes(atual)) {
     input.value = atual;
     val.value = atual;
   }
 }
 
-function limparBuscaCidade() {
-  const input = document.getElementById('mc-cidade');
-  const val = document.getElementById('mc-cidade-val');
+function limparBuscaCidade(prefix = 'mc') {
+  const input = document.getElementById(prefix + '-cidade');
+  const val = document.getElementById(prefix + '-cidade-val');
   if (input) { input.value = ''; input.placeholder = 'Selecione a UF primeiro...'; }
   if (val) val.value = '';
-  fecharDropdownCidade();
+  fecharDropdownCidade(prefix);
 }
 
-function onCidadeInput() {
-  const input = document.getElementById('mc-cidade');
-  const val = document.getElementById('mc-cidade-val');
+function onCidadeInput(prefix = 'mc') {
+  const input = document.getElementById(prefix + '-cidade');
+  const val = document.getElementById(prefix + '-cidade-val');
   const termo = input.value.trim().toLowerCase();
   val.value = '';
   _cidadeHighlight = -1;
-  if (!termo || !_cidadesAtuais.length) { fecharDropdownCidade(); return; }
+  if (!termo || !_cidadesAtuais.length) { fecharDropdownCidade(prefix); return; }
   const filtradas = _cidadesAtuais.filter(c => c.toLowerCase().includes(termo));
-  mostrarDropdownCidade(filtradas);
+  mostrarDropdownCidade(filtradas, prefix);
 }
 
-function onCidadeFocus() {
-  const input = document.getElementById('mc-cidade');
+function onCidadeFocus(prefix = 'mc') {
+  const input = document.getElementById(prefix + '-cidade');
   const termo = input.value.trim().toLowerCase();
   if (_cidadesAtuais.length) {
     const filtradas = termo ? _cidadesAtuais.filter(c => c.toLowerCase().includes(termo)) : _cidadesAtuais;
-    mostrarDropdownCidade(filtradas);
+    mostrarDropdownCidade(filtradas, prefix);
   }
 }
 
-function mostrarDropdownCidade(lista) {
-  const dd = document.getElementById('mc-cidade-dropdown');
+function mostrarDropdownCidade(lista, prefix = 'mc') {
+  const dd = document.getElementById(prefix + '-cidade-dropdown');
   if (!dd) return;
   dd.innerHTML = '';
   _cidadeHighlight = -1;
@@ -3821,29 +4255,29 @@ function mostrarDropdownCidade(lista) {
     div.textContent = c;
     div.dataset.cidade = c;
     div.dataset.idx = i;
-    div.addEventListener('mousedown', (e) => { e.preventDefault(); selecionarCidade(c); });
-    div.addEventListener('mouseenter', () => { _cidadeHighlight = i; atualizarHighlightCidade(); });
+    div.addEventListener('mousedown', (e) => { e.preventDefault(); selecionarCidade(c, prefix); });
+    div.addEventListener('mouseenter', () => { _cidadeHighlight = i; atualizarHighlightCidade(prefix); });
     dd.appendChild(div);
   });
   dd.classList.add('open');
 }
 
-function fecharDropdownCidade() {
-  const dd = document.getElementById('mc-cidade-dropdown');
+function fecharDropdownCidade(prefix = 'mc') {
+  const dd = document.getElementById(prefix + '-cidade-dropdown');
   if (dd) { dd.classList.remove('open'); dd.innerHTML = ''; }
   _cidadeHighlight = -1;
 }
 
-function selecionarCidade(cidade) {
-  const input = document.getElementById('mc-cidade');
-  const val = document.getElementById('mc-cidade-val');
+function selecionarCidade(cidade, prefix = 'mc') {
+  const input = document.getElementById(prefix + '-cidade');
+  const val = document.getElementById(prefix + '-cidade-val');
   input.value = cidade;
   val.value = cidade;
-  fecharDropdownCidade();
+  fecharDropdownCidade(prefix);
 }
 
-function atualizarHighlightCidade() {
-  const dd = document.getElementById('mc-cidade-dropdown');
+function atualizarHighlightCidade(prefix = 'mc') {
+  const dd = document.getElementById(prefix + '-cidade-dropdown');
   if (!dd) return;
   dd.querySelectorAll('.cidade-dropdown-item').forEach((el, i) => {
     el.classList.toggle('highlighted', i === _cidadeHighlight);
@@ -3852,19 +4286,21 @@ function atualizarHighlightCidade() {
   if (hl) hl.scrollIntoView({ block: 'nearest' });
 }
 
-function onCidadeKeydown(e) {
-  const dd = document.getElementById('mc-cidade-dropdown');
+function onCidadeKeydown(e, prefix = 'mc') {
+  const dd = document.getElementById(prefix + '-cidade-dropdown');
   if (!dd || !dd.classList.contains('open')) return;
   const items = dd.querySelectorAll('.cidade-dropdown-item');
   if (!items.length) return;
-  if (e.key === 'ArrowDown') { e.preventDefault(); _cidadeHighlight = Math.min(_cidadeHighlight + 1, items.length - 1); atualizarHighlightCidade(); }
-  else if (e.key === 'ArrowUp') { e.preventDefault(); _cidadeHighlight = Math.max(_cidadeHighlight - 1, 0); atualizarHighlightCidade(); }
-  else if (e.key === 'Enter' && _cidadeHighlight >= 0) { e.preventDefault(); selecionarCidade(items[_cidadeHighlight].dataset.cidade); }
-  else if (e.key === 'Escape') { fecharDropdownCidade(); }
+  if (e.key === 'ArrowDown') { e.preventDefault(); _cidadeHighlight = Math.min(_cidadeHighlight + 1, items.length - 1); atualizarHighlightCidade(prefix); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); _cidadeHighlight = Math.max(_cidadeHighlight - 1, 0); atualizarHighlightCidade(prefix); }
+  else if (e.key === 'Enter' && _cidadeHighlight >= 0) { e.preventDefault(); selecionarCidade(items[_cidadeHighlight].dataset.cidade, prefix); }
+  else if (e.key === 'Escape') { fecharDropdownCidade(prefix); }
 }
 
 document.addEventListener('click', (e) => {
-  if (!e.target.closest('#mc-cidade') && !e.target.closest('#mc-cidade-dropdown')) fecharDropdownCidade();
+  ['mc', 'ml'].forEach(p => {
+    if (!e.target.closest('#' + p + '-cidade') && !e.target.closest('#' + p + '-cidade-dropdown')) fecharDropdownCidade(p);
+  });
 });
 
 function popularFiltroUfCertidoes() {
@@ -3882,7 +4318,7 @@ function popularFiltroUfCertidoes() {
 
 function calcStatusCertidao(cert) {
   if (cert.status === 'pendente') return 'pendente';
-  if (!cert.dataValidade) return cert.status || 'pendente';
+  if (cert.semValidade || cert.dataValidade === 'Sem Validade' || !cert.dataValidade) return 'valida';
   const hj = new Date(); hj.setHours(0,0,0,0);
   const val = new Date(cert.dataValidade); val.setHours(0,0,0,0);
   if (val < hj) return 'vencida';
@@ -3925,7 +4361,7 @@ function renderCertidoes(page) {
   tb.innerHTML = paginated.map(c => {
     const emp = getEmpresas().find(e => e.id === c.empresaId);
     const _user = JSON.parse(sessionStorage.getItem('user') || '{}');
-    const isAdm = _user.role === 'admin';
+    const isAdm = pode('certidoes', 'delete');
     const st = calcStatusCertidao(c);
     const stLabel = { valida: 'Válida', vencida: 'Vencida', vencendo: 'Vencendo', pendente: 'Pendente' }[st];
     const stClass = { valida: 'badge-valida', vencida: 'badge-vencido', vencendo: 'badge-pendente', pendente: 'badge-pendente' }[st];
@@ -3939,7 +4375,7 @@ function renderCertidoes(page) {
       <td>${c.cidade || '—'}</td>
       <td>${escapeHtml(c.tipo)}</td>
       <td>${c.dataEmissao ? fmtData(c.dataEmissao) : '—'}</td>
-      <td>${c.dataValidade ? fmtData(c.dataValidade) : '—'}</td>
+      <td>${(c.semValidade || c.dataValidade === 'Sem Validade' || (!c.dataValidade && c.id)) ? '<span style="color:#2563eb;font-weight:600;">Sem Validade</span>' : (c.dataValidade ? fmtData(c.dataValidade) : '—')}</td>
       <td><span class="badge ${stClass}">${stLabel}</span></td>
       <td>${arqBtn}</td>
       <td style="display:flex;gap:4px;">
@@ -4019,6 +4455,37 @@ function popularModalCertidaoEmpresa() {
   });
 }
 
+var MSG_CNPJ_PLACEHOLDER = 'Digite o CNPJ para localizar a empresa...';
+
+function onCnpjCertidaoLookup() {
+  const input = document.getElementById('mc-cnpj');
+  const msg = document.getElementById('mc-cnpj-msg');
+  const sel = document.getElementById('mc-empresa');
+  if (!input || !msg || !sel) return;
+  const digitos = (input.value || '').replace(/\D/g, '');
+  if (digitos.length !== 14 && digitos.length !== 11) { sel.disabled = false; msg.innerHTML = MSG_CNPJ_PLACEHOLDER; msg.style.color = ''; return; }
+  const empresas = getEmpresas().filter(e => e.active !== 0);
+  const encontrada = empresas.find(e => (e.cnpj || '').replace(/\D/g, '') === digitos);
+  if (encontrada) {
+    sel.value = encontrada.id;
+    sel.disabled = true;
+    const ufEmp = (encontrada.uf_cnpj || '').toUpperCase().trim();
+    if (UFS_BRASIL.includes(ufEmp)) selecionarUf(ufEmp + ' - ' + UF_NOMES[ufEmp]);
+    msg.innerHTML = '<span style="color:#2e7d52;font-weight:600;">&#10003; Empresa encontrada: ' + escapeHtml(encontrada.nome) + (ufEmp ? ' &middot; UF ' + escapeHtml(ufEmp) : '') + '</span>';
+    msg.style.color = '';
+  } else {
+    sel.disabled = false;
+    if (!document.getElementById('mc-id').value) {
+      sel.value = '';
+      msg.innerHTML = '<span style="color:#b45309;">CNPJ não encontrado. <a href="javascript:void(0)" onclick="fecharModal(\'modal-certidao\');showConfigSub(\'empresas\')" style="color:#1d4ed8;font-weight:600;text-decoration:underline;">Cadastre a empresa em Empresas &rsaquo;</a></span>';
+      msg.style.color = '';
+    } else {
+      msg.innerHTML = MSG_CNPJ_PLACEHOLDER;
+      msg.style.color = '';
+    }
+  }
+}
+
 function popularModalCertidaoTipo() {
   const sel = document.getElementById('mc-tipo');
   if (!sel) return;
@@ -4061,14 +4528,52 @@ function onTipoCertidaoChange() {
   }
 }
 
+function toggleSemValidadeCertidao(forceState) {
+  const btn = document.getElementById('btn-toggle-sem-validade');
+  const valInput = document.getElementById('mc-validade');
+  const reqSpan = document.getElementById('mc-validade-req');
+  const hiddenVal = document.getElementById('mc-sem-validade-val');
+  if (!btn || !valInput) return;
+
+  const currentActive = hiddenVal.value === '1';
+  const isSemValidade = (forceState !== undefined) ? forceState : !currentActive;
+
+  if (isSemValidade) {
+    hiddenVal.value = '1';
+    btn.innerHTML = '<span>✅</span> Documento Sem Validade';
+    btn.style.background = '#dbeafe';
+    btn.style.color = '#1e40af';
+    btn.style.borderColor = '#93c5fd';
+    valInput.value = '';
+    valInput.required = false;
+    valInput.disabled = true;
+    valInput.style.opacity = '0.5';
+    valInput.style.backgroundColor = '#f1f5f9';
+    if (reqSpan) reqSpan.style.display = 'none';
+  } else {
+    hiddenVal.value = '0';
+    btn.innerHTML = '<span>🔓</span> Documento Sem Validade';
+    btn.style.background = '#e2e8f0';
+    btn.style.color = '#334155';
+    btn.style.borderColor = '#cbd5e1';
+    valInput.disabled = false;
+    valInput.required = true;
+    valInput.style.opacity = '1';
+    valInput.style.backgroundColor = '#ffffff';
+    if (reqSpan) reqSpan.style.display = 'inline';
+  }
+}
+
 async function abrirModalCertidao(cert) {
   document.getElementById('mc-id').value = cert ? cert.id : '';
-  document.getElementById('mc-empresa').value = cert ? cert.empresaId : '';
   document.getElementById('mc-cnpj').value = cert ? (cert.cnpj || '') : '';
   document.getElementById('mc-obs').value = cert ? (cert.obs || '') : '';
   document.getElementById('mc-arquivo').value = '';
   document.getElementById('modal-certidao-title').textContent = cert ? 'Editar Certidão' : 'Nova Certidão';
   popularModalCertidaoEmpresa();
+  const selEmp = document.getElementById('mc-empresa');
+  selEmp.value = cert ? cert.empresaId : '';
+  selEmp.disabled = false;
   popularModalCertidaoTipo();
   popularUfSelect();
   limparBuscaCidade();
@@ -4090,8 +4595,17 @@ async function abrirModalCertidao(cert) {
   document.getElementById('mc-tipo').value = cert ? cert.tipo : '';
   onTipoCertidaoChange();
   document.getElementById('mc-emissao').value = cert ? (cert.dataEmissao || '') : '';
-  document.getElementById('mc-validade').value = cert ? (cert.dataValidade || '') : '';
+  const isSemVal = cert ? (cert.semValidade || cert.dataValidade === 'Sem Validade' || (cert.id && !cert.dataValidade)) : false;
+  if (isSemVal) {
+    document.getElementById('mc-validade').value = '';
+    toggleSemValidadeCertidao(true);
+  } else {
+    document.getElementById('mc-validade').value = cert ? (cert.dataValidade || '') : '';
+    toggleSemValidadeCertidao(false);
+  }
   document.getElementById('mc-status').value = cert ? (cert.status || 'pendente') : 'pendente';
+  document.getElementById('mc-cnpj-msg').innerHTML = MSG_CNPJ_PLACEHOLDER;
+  if (cert && cert.cnpj) onCnpjCertidaoLookup();
   abrirModal('modal-certidao');
 }
 
@@ -4107,6 +4621,7 @@ async function salvarCertidao() {
   const uf = document.getElementById('mc-uf-val').value;
   const dataEmissao = document.getElementById('mc-emissao').value;
   const dataValidade = document.getElementById('mc-validade').value;
+  const semValidade = document.getElementById('mc-sem-validade-val').value === '1';
   const arquivoInput = document.getElementById('mc-arquivo');
   
   if (!empresaId || !tipo || !cnpj) {
@@ -4114,7 +4629,7 @@ async function salvarCertidao() {
   }
   if (!uf) { mostrarToast('Informe a UF.', 'erro'); return; }
   if (!dataEmissao) { mostrarToast('Informe a Data de Emissão.', 'erro'); return; }
-  if (!dataValidade) { mostrarToast('Informe a Data de Validade.', 'erro'); return; }
+  if (!semValidade && !dataValidade) { mostrarToast('Informe a Data de Validade ou ative "Documento Sem Validade".', 'erro'); return; }
   if (!arquivoInput.files || !arquivoInput.files[0]) { mostrarToast('Anexe o arquivo da certidão.', 'erro'); return; }
   
   const cnpjNumeros = cnpj.replace(/\D/g, '');
@@ -4138,11 +4653,12 @@ async function salvarCertidao() {
   if (editId) {
     const idx = certidoes.findIndex(c => c.id === editId);
     if (idx === -1) return;
-    certObj = { ...certidoes[idx], empresaId, cnpj, uf, cidade, tipo, dataEmissao, dataValidade, status, obs, updated_at: now() };
+    const finalValidade = semValidade ? 'Sem Validade' : dataValidade;
+    certObj = { ...certidoes[idx], empresaId, cnpj, uf, cidade, tipo, dataEmissao, dataValidade: finalValidade, semValidade: semValidade ? 1 : 0, status, obs, updated_at: now() };
     if (arquivo) certObj.arquivo = arquivo;
   } else {
     certObj = {
-      id: uid(), empresaId, cnpj, uf, cidade, tipo, dataEmissao, dataValidade,
+      id: uid(), empresaId, cnpj, uf, cidade, tipo, dataEmissao, dataValidade: (semValidade ? 'Sem Validade' : dataValidade), semValidade: semValidade ? 1 : 0,
       status, arquivo, obs, criadoEm: now(), updated_at: now()
     };
   }
@@ -4230,7 +4746,7 @@ function renderLicitacoes(page) {
   renderPagination(total, lcCurrentPage, 'lc-pagination', 'renderLicitacoes');
 
   if (!paginated.length) {
-    tb.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#aaa;padding:32px">Nenhuma licitação cadastrada.</td></tr>';
+    tb.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#aaa;padding:32px">Nenhuma licitação cadastrada.</td></tr>';
     return;
   }
 
@@ -4246,8 +4762,9 @@ function renderLicitacoes(page) {
     const arqBtns = arquivos.map((a, i) => `<button class="btn btn-sm btn-primary" onclick="previewAnexo('${a.data || ''}','${escapeHtml(a.name || 'arquivo')}')" style="padding:2px 8px;font-size:0.75rem;">${escapeHtml(a.tipo || a.name?.slice(0,15) || 'arq')}</button>`).join(' ') || '—';
     const cnpj = l.cnpj || '—';
     const nomeLic = l.nomeLicitacao || '—';
-    const isAdm = (typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'admin');
+    const isAdm = pode('licitacoes', 'delete');
     const isInativo = st === 'inativo';
+    const indiceReajuste = escapeHtml(l.indiceReajuste || '—');
     return `<tr>
       <td>${escapeHtml(l.numeroLicitacao)}</td>
       <td>${escapeHtml(nomeLic)}</td>
@@ -4255,6 +4772,7 @@ function renderLicitacoes(page) {
       <td>${escapeHtml(emp?.nome || '—')}</td>
       <td>${escapeHtml(l.objeto)}</td>
       <td>R$ ${fmtMoeda(l.valor || 0)}</td>
+      <td>${indiceReajuste}</td>
       <td>${vigencia}</td>
       <td><span class="badge ${stClass}">${stLabel}</span></td>
       <td>${arqBtns}</td>
@@ -4292,6 +4810,29 @@ function popularModalLicitacaoEmpresa() {
   });
 }
 
+function onCnpjLicitacaoLookup() {
+  const input = document.getElementById('ml-cnpj');
+  const msg = document.getElementById('ml-cnpj-msg');
+  const sel = document.getElementById('ml-empresa');
+  if (!input || !msg || !sel) return;
+  const digitos = (input.value || '').replace(/\D/g, '');
+  if (digitos.length !== 14 && digitos.length !== 11) { sel.disabled = false; msg.innerHTML = MSG_CNPJ_PLACEHOLDER; return; }
+  const encontrada = getEmpresas().filter(e => e.active !== 0).find(e => (e.cnpj || '').replace(/\D/g, '') === digitos);
+  if (encontrada) {
+    sel.value = encontrada.id;
+    sel.disabled = true;
+    msg.innerHTML = '<span style="color:#2e7d52;font-weight:600;">&#10003; Empresa encontrada: ' + escapeHtml(encontrada.nome) + '</span>';
+  } else {
+    sel.disabled = false;
+    if (!document.getElementById('ml-id').value) {
+      sel.value = '';
+      msg.innerHTML = '<span style="color:#b45309;">CNPJ não encontrado. <a href="javascript:void(0)" onclick="fecharModal(\'modal-licitacao\');showConfigSub(\'empresas\')" style="color:#1d4ed8;font-weight:600;text-decoration:underline;">Cadastre a empresa em Empresas &rsaquo;</a></span>';
+    } else {
+      msg.innerHTML = MSG_CNPJ_PLACEHOLDER;
+    }
+  }
+}
+
 function abrirModalLicitacao(lc) {
   document.getElementById('ml-id').value = lc ? lc.id : '';
   document.getElementById('ml-numero').value = lc ? (lc.numeroLicitacao || '') : '';
@@ -4300,6 +4841,7 @@ function abrirModalLicitacao(lc) {
   document.getElementById('ml-edital').value = lc ? (lc.edital || '') : '';
   document.getElementById('ml-objeto').value = lc ? (lc.objeto || '') : '';
   document.getElementById('ml-valor').value = lc ? (lc.valor || '') : '';
+  document.getElementById('ml-indice-reajuste').value = lc ? (lc.indiceReajuste || '') : '';
   document.getElementById('ml-homologacao').value = lc ? (lc.dataHomologacao || '') : '';
   document.getElementById('ml-inicio').value = lc ? (lc.dataInicio || '') : '';
   document.getElementById('ml-fim').value = lc ? (lc.dataFim || '') : '';
@@ -4307,9 +4849,28 @@ function abrirModalLicitacao(lc) {
   document.getElementById('ml-obs').value = lc ? (lc.obs || '') : '';
   document.getElementById('ml-novo-arquivo').value = '';
   document.getElementById('modal-licitacao-title').textContent = lc ? 'Editar Licitação' : 'Nova Licitação';
+  popularUfSelect('ml');
+  if (lc && lc.uf && UFS_BRASIL.includes(lc.uf)) {
+    document.getElementById('ml-uf').value = lc.uf + ' - ' + (UF_NOMES[lc.uf] || lc.uf);
+    document.getElementById('ml-uf-val').value = lc.uf;
+  }
+  limparBuscaCidade('ml');
+  if (lc && lc.uf && lc.cidade) {
+    document.getElementById('ml-cidade').value = lc.cidade;
+    document.getElementById('ml-cidade-val').value = lc.cidade;
+    popularCidadesSelect('ml').then(() => {
+      document.getElementById('ml-cidade').value = lc.cidade;
+      document.getElementById('ml-cidade-val').value = lc.cidade;
+    });
+  }
   popularModalLicitacaoEmpresa();
   setTimeout(() => {
-    document.getElementById('ml-empresa').value = lc ? (lc.empresaId || '') : '';
+    const selEmp = document.getElementById('ml-empresa');
+    selEmp.value = lc ? (lc.empresaId || '') : '';
+    selEmp.disabled = false;
+    const msgEl = document.getElementById('ml-cnpj-msg');
+    if (msgEl) msgEl.innerHTML = MSG_CNPJ_PLACEHOLDER;
+    if (lc && lc.cnpj) onCnpjLicitacaoLookup();
   }, 50);
   renderArquivosLicitacao(lc ? (lc.arquivos || []) : []);
   if (lc && lc.id) { carregarAditivosLicitacao(lc.id); } else { document.getElementById('ml-aditivos-lista').innerHTML = '<p style="color:#aaa;font-size:0.85rem;">Nenhum aditivo registrado.</p>'; }
@@ -4364,8 +4925,11 @@ async function salvarLicitacao() {
   }
   const nomeLicitacao = document.getElementById('ml-nome').value.trim();
   const edital = document.getElementById('ml-edital').value;
+  const uf = document.getElementById('ml-uf-val').value;
+  const cidade = document.getElementById('ml-cidade-val').value;
   const empresaId = document.getElementById('ml-empresa').value || null;
   const valor = parseFloat(document.getElementById('ml-valor').value) || 0;
+  const indiceReajuste = document.getElementById('ml-indice-reajuste').value.trim();
   const status = document.getElementById('ml-status').value;
   const obs = document.getElementById('ml-obs').value;
 
@@ -4377,20 +4941,23 @@ async function salvarLicitacao() {
   if (editId) {
     const idx = licitacoes.findIndex(l => l.id === editId);
     if (idx === -1) return;
-    lcObj = { ...licitacoes[idx], numeroLicitacao: numero, nomeLicitacao, cnpj, edital, objeto, empresaId, valor, dataHomologacao, dataInicio, dataFim, status, obs, updated_at: now() };
+    lcObj = { ...licitacoes[idx], numeroLicitacao: numero, nomeLicitacao, cnpj, edital, uf, cidade, objeto, empresaId, valor, indiceReajuste, dataHomologacao, dataInicio, dataFim, status, obs, updated_at: now() };
     lcObj.arquivos = _licitacaoArquivosTemp.length > 0 ? _licitacaoArquivosTemp : (Array.isArray(lcObj.arquivos) ? lcObj.arquivos : []);
   } else {
     lcObj = {
-      id: uid(), numeroLicitacao: numero, nomeLicitacao, cnpj, edital, objeto,
-      empresaId, valor, dataHomologacao, dataInicio, dataFim, status, arquivos: [], resumo: null,
+      id: uid(), numeroLicitacao: numero, nomeLicitacao, cnpj, edital, uf, cidade, objeto,
+      empresaId, valor, indiceReajuste, dataHomologacao, dataInicio, dataFim, status,
+      arquivos: _licitacaoArquivosTemp.length > 0 ? _licitacaoArquivosTemp.slice() : [], resumo: null,
       obs, criadoEm: now(), updated_at: now()
     };
   }
 
   const payload = {
     id: lcObj.id, numero_licitacao: lcObj.numeroLicitacao || '', edital: lcObj.edital || '',
+    uf: lcObj.uf || '', cidade: lcObj.cidade || '',
     objeto: lcObj.objeto || '', empresa_id: lcObj.empresaId || '',
     valor: lcObj.valor || 0,
+    indice_reajuste: lcObj.indiceReajuste || '',
     data_homologacao: lcObj.dataHomologacao || '', data_inicio: lcObj.dataInicio || '',
     data_fim: lcObj.dataFim || '', status: lcObj.status || 'em_andamento',
     arquivos: JSON.stringify(_licitacaoArquivosTemp.length > 0 ? _licitacaoArquivosTemp : (Array.isArray(lcObj.arquivos) ? lcObj.arquivos : [])), obs: lcObj.obs || '',
@@ -4422,17 +4989,16 @@ async function excluirLicitacao(id) {
   if (typeof currentUser === 'undefined' || !currentUser || currentUser.role !== 'admin') {
     mostrarToast('Apenas o administrador pode excluir licitacoes.', 'erro'); return;
   }
-  if (!confirm('Excluir esta licitacao?')) return;
-  const ts = now();
+  if (!confirm('Excluir esta licitacao definitivamente? Esta acao nao pode ser desfeita.')) return;
   try {
-    const r = await apiCall('PUT', 'licitacoes/' + id, { deleted_at: ts, updated_at: ts });
+    const r = await apiCall('DELETE', 'licitacoes/' + id);
     if (!r || !r.ok) throw new Error(r?.erro || 'Erro ao excluir licitacao');
     const licitacoes = getLicitacoes();
     const idx = licitacoes.findIndex(l => l.id === id);
-    if (idx !== -1) { licitacoes[idx].deleted_at = ts; licitacoes[idx].updated_at = ts; }
+    if (idx !== -1) licitacoes.splice(idx, 1);
     saveLicitacoes(licitacoes);
     renderLicitacoes();
-    mostrarToast('Licitacao excluida com sucesso!', 'sucesso');
+    mostrarToast('Licitacao excluida definitivamente!', 'sucesso');
   } catch (e) {
     mostrarToast('Erro ao excluir licitacao: ' + e.message, 'erro');
   }
@@ -4478,6 +5044,8 @@ function abrirDetalheLicitacao(id) {
       <div><label>Vigência</label><p>${vigencia}</p></div>
       <div><label>Status</label><p><span class="badge ${stClass}">${stLabel}</span></p></div>
       <div><label>Edital</label><p>${escapeHtml(l.edital || '—')}</p></div>
+      <div><label>UF</label><p>${escapeHtml(l.uf || '—')}</p></div>
+      <div><label>Cidade</label><p>${escapeHtml(l.cidade || '—')}</p></div>
       <div><label>Data Homologação</label><p>${l.dataHomologacao ? fmtData(l.dataHomologacao) : '—'}</p></div>
     </div>`;
 
@@ -4529,7 +5097,7 @@ function abrirDetalheLicitacao(id) {
         <td>${c.uf || '—'}</td>
         <td>${c.cidade || '—'}</td>
         <td>${c.dataEmissao ? fmtData(c.dataEmissao) : '—'}</td>
-        <td>${c.dataValidade ? fmtData(c.dataValidade) : '—'}</td>
+        <td>${(c.semValidade || c.dataValidade === 'Sem Validade' || (!c.dataValidade && c.id)) ? 'Sem Validade' : (c.dataValidade ? fmtData(c.dataValidade) : '—')}</td>
         <td><span class="badge ${stClass}">${stLabel}</span></td>
         <td>${arqBtn}</td>
       </tr>`;
@@ -4555,7 +5123,7 @@ function renderArquivosLicitacao(arquivos) {
     container.innerHTML = '<p style="color:#aaa;font-size:0.85rem;">Nenhum arquivo anexado.</p>';
     return;
   }
-  const isAdmin = (typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'admin');
+  const isAdmin = pode('licitacoes', 'delete');
   container.innerHTML = _licitacaoArquivosTemp.map((a, i) => {
     const tipoLabel = {edital:'Edital',contrato:'Contrato',aditivo:'Aditivo',outro:'Outro'}[a.tipo] || a.tipo;
     const delBtn = isAdmin ? `<button class="btn btn-sm btn-danger" onclick="removerArquivoLicitacao(${i})" style="padding:2px 6px;font-size:0.7rem;">x</button>` : '';
@@ -4699,7 +5267,15 @@ function excluirAditivoLicitacao(licitacaoId, aditivoId) {
 }
 
 // ===================== NAVEGAÇÃO =====================
+// O acesso segue o perfil predefinido do usuário (admin, admin de setor ou
+// usuário) tratado em mostrarApp()/showConfigSub(). Perfis personalizados com
+// matriz própria continuam cobertos por pode()/temPermissao().
 function showPage(id, btn) {
+  navigateToPage(id, btn);
+}
+
+function navigateToPage(id, btn) {
+
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + id).classList.add('active');
   document.querySelectorAll('nav button, .nav-dropdown button').forEach(b => b.classList.remove('active'));
@@ -4707,7 +5283,7 @@ function showPage(id, btn) {
 
   document.getElementById('config-dropdown').classList.remove('show');
 
-  if (id === 'dashboard') renderDashboard();
+  if (id === 'dashboard') { popularFiltroGrupoDash(); renderDashboard(); }
   if (id === 'certidoes') { popularFiltroEmpresaCertidoes(); popularFiltroUfCertidoes(); popularFiltroTipoCertidoes(); loadFromServer().then(() => renderCertidoes()); }
   if (id === 'licitacoes') { popularFiltroEmpresaLicitacoes(); loadFromServer().then(() => renderLicitacoes()); }
   if (id === 'certificados-digitais') { popularPgCdEmpresaFiltro(); loadFromServer().then(() => renderPgCertificadosDigitais()); }
@@ -4725,16 +5301,21 @@ function toggleConfigDropdown(event) {
 
 function showConfigSub(section) {
   const user = JSON.parse(sessionStorage.getItem('user') || '{}');
-  const isAdmin = user.role === 'admin';
-  const isAdminOrSetorAdmin = user.role === 'admin' || user.role === 'setor_admin';
   const isSetorAdmin = user.role === 'setor_admin';
-  if (section === 'usuarios' && !isAdminOrSetorAdmin) {
-    section = 'minha-conta';
-  }
-  if (isSetorAdmin && ['empresas', 'certificados-digitais', 'setores', 'tipos', 'email', 'historico'].includes(section)) {
+  if (isSetorAdmin && ['certificados-digitais', 'setores', 'email', 'historico', 'sistema'].includes(section)) {
     section = 'usuarios';
   }
-  if (!isAdminOrSetorAdmin && ['destinatarios', 'certificados-digitais'].includes(section)) {
+  // Seções administrativas seguem a matriz de permissões (role_permissions),
+  // a mesma que o backend cobra nas rotas correspondentes. Quem não tem a
+  // permissão de leitura cai na conta própria, em vez de ver uma tela em erro.
+  const secaoPermissao = {
+    'usuarios': ['usuarios', 'read'],
+    'destinatarios': ['destinatarios', 'read'],
+    'certificados-digitais': ['certificados_digitais', 'read'],
+    'grupos-empresas': ['empresas', 'read']
+  };
+  const exigida = secaoPermissao[section];
+  if (exigida && !pode(exigida[0], exigida[1])) {
     section = 'minha-conta';
   }
 
@@ -4762,6 +5343,7 @@ function showConfigSub(section) {
   if (section === 'destinatarios') { renderDestinatariosConfig(); popularDestEmpresaCheckboxes(); }
   if (section === 'email') { carregarConfig(); carregarPrazos(); }
   if (section === 'historico') carregarHistorico();
+  if (section === 'grupos-empresas') carregarGruposEmpresas();
 }
 
 document.addEventListener('click', function(e) {
@@ -4801,13 +5383,22 @@ function renderDashboardCharts(certidoes, licitacoes) {
 
   const cs1 = document.getElementById('chart-cert-status');
   if (cs1 && (certValida + certVencendo + certVencida + certPendente) > 0) {
+    const statusKeys = ['valida', 'vencendo', 'vencida', 'pendente'];
     dashCharts.certStatus = new Chart(cs1, {
       type: 'doughnut',
       data: {
         labels: ['Válida', 'Vencendo', 'Vencida', 'Pendente'],
         datasets: [{ data: [certValida, certVencendo, certVencida, certPendente], backgroundColor: ['#28a745', '#ffc107', '#dc3545', '#6c757d'], borderWidth: 1 }]
       },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom' } },
+        onHover: (evt, els) => { evt.native.target.style.cursor = els.length ? 'pointer' : 'default'; },
+        onClick: (evt, els) => {
+          if (!els.length) return;
+          abrirDetalheDashCertidoes('Certidões — ' + dashCharts.certStatus.data.labels[els[0].index], statusKeys[els[0].index]);
+        }
+      }
     });
   }
 
@@ -4816,23 +5407,34 @@ function renderDashboardCharts(certidoes, licitacoes) {
 
   const cs2 = document.getElementById('chart-lic-status');
   if (cs2 && (licAndamento + licInativo) > 0) {
+    const licStatusKeys = ['em_andamento', 'inativo'];
     dashCharts.licStatus = new Chart(cs2, {
       type: 'doughnut',
       data: {
         labels: ['Em Andamento', 'Inativo'],
         datasets: [{ data: [licAndamento, licInativo], backgroundColor: ['#17a2b8', '#adb5bd'], borderWidth: 1 }]
       },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom' } },
+        onHover: (evt, els) => { evt.native.target.style.cursor = els.length ? 'pointer' : 'default'; },
+        onClick: (evt, els) => {
+          if (!els.length) return;
+          abrirDetalheDashLicitacoes('Licitações — ' + dashCharts.licStatus.data.labels[els[0].index], licStatusKeys[els[0].index]);
+        }
+      }
     });
   }
 
   const meses = [];
   const contadores = [];
+  const mesRanges = [];
   const hoje = new Date(); hoje.setHours(0,0,0,0);
   for (let i = 0; i < 6; i++) {
     const d = new Date(hoje.getFullYear(), hoje.getMonth() + i, 1);
     const prox = new Date(hoje.getFullYear(), hoje.getMonth() + i + 1, 0);
     meses.push(d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }));
+    mesRanges.push({ de: d, ate: prox });
     const count = certidoes.filter(c => {
       if (!c.dataValidade) return false;
       const dv = new Date(c.dataValidade + 'T12:00:00');
@@ -4849,27 +5451,167 @@ function renderDashboardCharts(certidoes, licitacoes) {
         labels: meses,
         datasets: [{ label: 'Vencimentos', data: contadores, backgroundColor: '#007bff', borderRadius: 4 }]
       },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+        onHover: (evt, els) => { evt.native.target.style.cursor = els.length ? 'pointer' : 'default'; },
+        onClick: (evt, els) => {
+          if (!els.length) return;
+          const idx = els[0].index;
+          abrirDetalheDashCertidoes('Certidões — Vencimento em ' + meses[idx], null, mesRanges[idx]);
+        }
+      }
     });
   }
 }
 
+// ===================== DASHBOARD: DETALHE AO CLICAR NOS GRÁFICOS =====================
+function _dashEmpresaNome(empresaId) {
+  const e = getEmpresas().find(x => x.id === empresaId);
+  return e ? e.nome : '—';
+}
+
+function _dashMontarTabelaCabecalho(cols) {
+  return '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">' +
+    '<thead><tr style="background:#eef2f7;position:sticky;top:0;">' +
+    cols.map(c => '<th style="padding:8px;text-align:left;">' + c + '</th>').join('') +
+    '</tr></thead><tbody>';
+}
+
+function abrirDetalheDashCertidoes(titulo, status, mesRange) {
+  let lista = getCertidoes();
+  const empIds = getLoggedUserEmpresaIds();
+  if (empIds) lista = lista.filter(c => empIds.includes(c.empresaId));
+  if (dashFiltroEmpresaIds.length) lista = lista.filter(c => dashFiltroEmpresaIds.includes(c.empresaId));
+  if (status) lista = lista.filter(c => calcStatusCertidao(c) === status);
+  if (mesRange) {
+    lista = lista.filter(c => {
+      if (!c.dataValidade) return false;
+      const dv = new Date(c.dataValidade + 'T12:00:00');
+      return dv >= mesRange.de && dv <= mesRange.ate;
+    });
+  }
+  const statusLabel = { valida: '<span class="badge badge-ativo">Válida</span>', vencendo: '<span class="badge badge-alerta">Vencendo</span>', vencida: '<span class="badge badge-vencido">Vencida</span>', pendente: '<span class="badge" style="background:#e9ecef;color:#555;">Pendente</span>' };
+  document.getElementById('mdd-titulo').textContent = titulo + ' (' + lista.length + ')';
+  const tb = document.getElementById('mdd-lista');
+  if (!lista.length) {
+    tb.innerHTML = '<div style="text-align:center;color:#aaa;padding:32px;">Nenhuma certidão encontrada.</div>';
+  } else {
+    tb.innerHTML = _dashMontarTabelaCabecalho(['Empresa', 'Tipo', 'CNPJ', 'Validade', 'Status']) +
+      lista.map(c => '<tr style="border-bottom:1px solid #f0f3f7;">' +
+        '<td style="padding:8px;">' + escapeHtml(_dashEmpresaNome(c.empresaId)) + '</td>' +
+        '<td style="padding:8px;">' + escapeHtml(c.tipo || '—') + '</td>' +
+        '<td style="padding:8px;">' + escapeHtml(c.cnpj || '—') + '</td>' +
+        '<td style="padding:8px;">' + (c.dataValidade ? fmtData(c.dataValidade) : '—') + '</td>' +
+        '<td style="padding:8px;">' + (statusLabel[calcStatusCertidao(c)] || '—') + '</td>' +
+      '</tr>').join('') + '</tbody></table>';
+  }
+  abrirModal('modal-dash-detalhe');
+}
+
+function abrirDetalheDashLicitacoes(titulo, status) {
+  let lista = getLicitacoes();
+  const empIds = getLoggedUserEmpresaIds();
+  if (empIds) lista = lista.filter(l => empIds.includes(l.empresaId));
+  if (dashFiltroEmpresaIds.length) lista = lista.filter(l => dashFiltroEmpresaIds.includes(l.empresaId));
+  if (status === 'em_andamento') lista = lista.filter(l => l.status === 'em_andamento' || !l.status);
+  else if (status) lista = lista.filter(l => l.status === status);
+  const statusLabel = { em_andamento: '<span class="badge badge-ativo">Em Andamento</span>', inativo: '<span class="badge" style="background:#e9ecef;color:#555;">Inativo</span>' };
+  document.getElementById('mdd-titulo').textContent = titulo + ' (' + lista.length + ')';
+  const tb = document.getElementById('mdd-lista');
+  if (!lista.length) {
+    tb.innerHTML = '<div style="text-align:center;color:#aaa;padding:32px;">Nenhuma licitação encontrada.</div>';
+  } else {
+    tb.innerHTML = _dashMontarTabelaCabecalho(['Empresa', 'Nº Licitação', 'Objeto', 'Data Fim', 'Status']) +
+      lista.map(l => '<tr style="border-bottom:1px solid #f0f3f7;">' +
+        '<td style="padding:8px;">' + escapeHtml(_dashEmpresaNome(l.empresaId)) + '</td>' +
+        '<td style="padding:8px;">' + escapeHtml(l.numeroLicitacao || l.nomeLicitacao || '—') + '</td>' +
+        '<td style="padding:8px;max-width:220px;white-space:normal;">' + escapeHtml(l.objeto || '—') + '</td>' +
+        '<td style="padding:8px;">' + (l.dataFim ? fmtData(l.dataFim) : '—') + '</td>' +
+        '<td style="padding:8px;">' + (statusLabel[l.status] || statusLabel.em_andamento) + '</td>' +
+      '</tr>').join('') + '</tbody></table>';
+  }
+  abrirModal('modal-dash-detalhe');
+}
+
+// ===================== DASHBOARD: FILTRO DE GRUPO/EMPRESAS =====================
+// IDs selecionados no filtro do dashboard (vazio = todas as empresas do usuário)
+let dashFiltroEmpresaIds = [];
+let dashGruposEmpresas = [];
+
+async function popularFiltroGrupoDash() {
+  const sel = document.getElementById('dash-filtro-grupo');
+  if (!sel) return;
+  const atual = sel.value;
+  try {
+    const res = await fetch('/api/company-groups');
+    const grupos = await res.json();
+    dashGruposEmpresas = Array.isArray(grupos) ? grupos : [];
+  } catch (e) {
+    console.error('Erro ao carregar grupos de empresas do dashboard:', e);
+    dashGruposEmpresas = [];
+  }
+  sel.innerHTML = '<option value="">Todas as empresas</option>';
+  dashGruposEmpresas.forEach(g => {
+    const opt = document.createElement('option');
+    opt.value = g.id;
+    opt.textContent = g.nome;
+    sel.appendChild(opt);
+  });
+  if (atual) sel.value = atual;
+}
+
+// Ao escolher um grupo, filtra o dashboard pelas empresas membros do grupo
+async function onDashGrupoChange() {
+  const grupoId = document.getElementById('dash-filtro-grupo')?.value || '';
+  if (grupoId) {
+    try {
+      const res = await fetch('/api/company-group-members?group_id=' + encodeURIComponent(grupoId));
+      const membros = await res.json();
+      dashFiltroEmpresaIds = (Array.isArray(membros) ? membros : []).map(m => m.empresa_id);
+    } catch (e) {
+      console.error('Erro ao carregar membros do grupo:', e);
+      dashFiltroEmpresaIds = [];
+    }
+  } else {
+    dashFiltroEmpresaIds = [];
+  }
+  renderDashboard();
+}
+
 function renderDashboard() {
   const empIds = getLoggedUserEmpresaIds();
+  const filtroDash = dashFiltroEmpresaIds;
   const hoje = new Date(); hoje.setHours(0,0,0,0);
 
   let certidoes = getCertidoes();
   if (empIds) certidoes = certidoes.filter(c => empIds.includes(c.empresaId));
+  if (filtroDash.length) certidoes = certidoes.filter(c => filtroDash.includes(c.empresaId));
   const certVencidas = certidoes.filter(c => calcStatusCertidao(c) === 'vencida').length;
   const certVencendo = certidoes.filter(c => calcStatusCertidao(c) === 'vencendo').length;
 
   let licitacoes = getLicitacoes();
+  if (empIds) licitacoes = licitacoes.filter(l => empIds.includes(l.empresaId));
+  if (filtroDash.length) licitacoes = licitacoes.filter(l => filtroDash.includes(l.empresaId));
   const licTotal = licitacoes.length;
   const licAndamento = licitacoes.filter(l => l.status === 'em_andamento' || !l.status).length;
   const licVencidas = licitacoes.filter(l => {
     if (l.status === 'inativo') return false;
     if (!l.dataFim) return false;
     return new Date(l.dataFim + 'T12:00:00') < hoje;
+  }).length;
+
+  // Certificados digitais
+  let certDig = getAllCertificadosDigitais();
+  if (empIds) certDig = certDig.filter(c => empIds.includes(c.empresa_id));
+  if (filtroDash.length) certDig = certDig.filter(c => filtroDash.includes(c.empresa_id));
+  const cdVencidos = certDig.filter(c => c.data_vencimento && new Date(c.data_vencimento + 'T00:00:00') < hoje).length;
+  const cdVencendo = certDig.filter(c => {
+    if (!c.data_vencimento) return false;
+    const venc = new Date(c.data_vencimento + 'T00:00:00');
+    if (venc < hoje) return false;
+    return Math.ceil((venc - hoje) / (1000 * 60 * 60 * 24)) <= 30;
   }).length;
 
   document.getElementById('summary-cards').innerHTML = `
@@ -4892,6 +5634,18 @@ function renderDashboard() {
     <div class="summary-card red">
       <div class="value">${licVencidas}</div>
       <div class="label">Lic. Vencidas</div>
+    </div>
+    <div class="summary-card">
+      <div class="value">${certDig.length}</div>
+      <div class="label">Certificados Digitais</div>
+    </div>
+    <div class="summary-card orange">
+      <div class="value">${cdVencendo}</div>
+      <div class="label">CD Próx. Vencer</div>
+    </div>
+    <div class="summary-card red">
+      <div class="value">${cdVencidos}</div>
+      <div class="label">CD Vencidos</div>
     </div>`;
 
   renderDashboardCharts(certidoes, licitacoes);
@@ -4958,7 +5712,7 @@ function toUpper(el) {
 // ===================== MODAL USUARIO =====================
 let _editandoUsuario = null;
 
-function abrirModalUsuario(dados) {
+async function abrirModalUsuario(dados) {
   _editandoUsuario = dados ? dados.id : null;
   document.getElementById('modal-usuario-titulo').textContent = dados ? 'Editar Usuário' : 'Novo Usuário';
   document.getElementById('mu-username').value = dados ? dados.username : '';
@@ -4967,7 +5721,48 @@ function abrirModalUsuario(dados) {
   document.getElementById('mu-email').value = dados ? (dados.email || '') : '';
   document.getElementById('mu-senha').value = '';
   document.getElementById('mu-senha').required = !dados;
-  document.getElementById('mu-perfil').value = dados ? dados.role : 'user';
+  
+  // Perfil predefinido: Usuário / Administrador de Setor / Administrador.
+  // Perfis personalizados (roles criadas) só entram como opção extra quando o
+  // usuário já está com um, para não trocar o perfil dele sem querer.
+  const sel = document.getElementById('mu-role');
+  if (sel) {
+    const perfisFixos = ['role_usuario', 'role_admin_setor', 'role_admin'];
+    while (sel.options.length > perfisFixos.length) sel.remove(perfisFixos.length);
+    let roleId = dados ? (dados.role_id || '') : 'role_usuario';
+    if (dados && !roleId) {
+      roleId = dados.role === 'admin' ? 'role_admin' : (dados.role === 'setor_admin' ? 'role_admin_setor' : 'role_usuario');
+    }
+    if (roleId && !perfisFixos.includes(roleId)) {
+      const opt = document.createElement('option');
+      opt.value = roleId;
+      opt.textContent = roleId;
+      sel.appendChild(opt);
+      try {
+        const res = await fetch('/api/roles');
+        const roles = await res.json();
+        const atual = (Array.isArray(roles) ? roles : []).find(r => r.id === roleId);
+        if (atual) opt.textContent = atual.nome;
+      } catch (e) {
+        console.error('Erro ao carregar perfil atual:', e);
+      }
+    }
+    sel.value = roleId;
+  }
+
+  // Carregar todos os grupos de empresas disponíveis
+  const selGrupo = document.getElementById('mu-grupo-empresas');
+  if (selGrupo) selGrupo.innerHTML = '<option value="">Nenhuma (usar empresas individuais)</option>';
+  await carregarGruposEmpresasPorRole();
+  if (selGrupo && dados && !selGrupo.disabled) {
+    try {
+      const gRes = await fetch('/api/user-grupo-empresas?user_id=' + encodeURIComponent(dados.id));
+      const g = await gRes.json();
+      if (g && g.grupo_empresas_id) selGrupo.value = g.grupo_empresas_id;
+    } catch (e) {
+      console.error('Erro ao carregar grupo do usuário:', e);
+    }
+  }
   const container = document.getElementById('mu-empresas-dual');
   if (dados) {
     const ue = getUserEmpresas(dados.id);
@@ -4977,13 +5772,15 @@ function abrirModalUsuario(dados) {
   }
   popularEmpresaCheckboxes();
   const containerSetores = document.getElementById('mu-setores-dual');
-  if (dados) {
-    const us = getUserSetores(dados.id);
-    containerSetores._selectedIds = us ? [...us.setorIds] : [];
-  } else {
-    containerSetores._selectedIds = [];
+  if (containerSetores) {
+    if (dados) {
+      const us = getUserSetores(dados.id);
+      containerSetores._selectedIds = us ? [...us.setorIds] : [];
+    } else {
+      containerSetores._selectedIds = [];
+    }
+    popularSetorCheckboxes();
   }
-  popularSetorCheckboxes();
   abrirModal('modal-usuario');
 }
 
@@ -4992,81 +5789,47 @@ function salvarUsuario() {
   const full_name = document.getElementById('mu-nome').value.trim();
   const email = document.getElementById('mu-email').value.trim();
   const password = document.getElementById('mu-senha').value;
-  const role = document.getElementById('mu-perfil').value;
+  const roleId = document.getElementById('mu-role').value;
   if (!username || !full_name) { alert('Preencha usuário e nome completo.'); return; }
   if (!_editandoUsuario && !password) { alert('Informe a senha.'); return; }
 
   const loggedUser = JSON.parse(sessionStorage.getItem('user') || '{}');
-  const isAdmin = role === 'admin';
-  const isSetorAdmin = role === 'setor_admin';
+  const isAdmin = roleId === 'role_admin';
   const isLoggedAdmin = loggedUser.role === 'admin';
-  const isLoggedSetorAdmin = loggedUser.role === 'setor_admin';
 
-  // setor_admin não pode criar admin
-  if (isSetorAdmin && !isLoggedAdmin) {
-    alert('Apenas administradores globais podem criar administradores de setor.');
+  // Só o administrador global cria administrador (mesma regra do backend)
+  if ((roleId === 'role_admin' || roleId === 'role_admin_setor') && !isLoggedAdmin) {
+    alert('Apenas administradores globais podem criar administradores.');
     return;
   }
 
   const empresaIds = [];
-  const setorIds = [];
+  const grupoEmpresasId = document.getElementById('mu-grupo-empresas')?.value;
 
   if (isAdmin) {
-    // admin global: pode atribuir qualquer empresa/setor
+    // admin global: pode atribuir qualquer empresa
     const empContainer = document.getElementById('mu-empresas-dual');
     if (empContainer && empContainer._selectedIds) empresaIds.push(...empContainer._selectedIds);
-    const setContainer = document.getElementById('mu-setores-dual');
-    if (setContainer && setContainer._selectedIds) setorIds.push(...setContainer._selectedIds);
-  } else if (isSetorAdmin) {
-    // setor_admin: só pode atribuir setores que ELE tem acesso (null =Financeiro = todos)
-    const rawLoggedSetorIds = getLoggedUserSetorIds();
-    const hasSetorFilter = Array.isArray(rawLoggedSetorIds) && rawLoggedSetorIds.length > 0;
-    const loggedSetorIds = rawLoggedSetorIds || [];
-    const setContainer = document.getElementById('mu-setores-dual');
-    if (setContainer && setContainer._selectedIds) {
-      setContainer._selectedIds.forEach(sid => {
-        if (!hasSetorFilter || loggedSetorIds.includes(sid)) setorIds.push(sid);
-      });
-    }
-    if (setorIds.length === 0) {
-      alert('Selecione pelo menos um setor que você tem acesso.');
-      return;
-    }
+  } else if (grupoEmpresasId) {
+    // Se tem grupo de empresas selecionado, não precisa de empresas individuais
+    // O grupo já define as empresas
   } else {
-    // usuário comum: empresas e setores selecionados
+    // usuário comum: empresas selecionadas individualmente
     const empContainer = document.getElementById('mu-empresas-dual');
     if (empContainer && empContainer._selectedIds) empresaIds.push(...empContainer._selectedIds);
-    const setContainer = document.getElementById('mu-setores-dual');
-    if (setContainer && setContainer._selectedIds) setorIds.push(...setContainer._selectedIds);
   }
 
   function onUserSaved(userId) {
-    if (userId && empresaIds.length) {
-      fetch('/api/user-empresas', { method:'POST', headers:Object.assign({'Content-Type':'application/json'}, csrfHeaders()), body:JSON.stringify({user_id: userId, empresa_ids: empresaIds}) }).catch(() => {});
-    }
-    if (userId && setorIds.length) {
-      fetch('/api/user-setores', { method:'POST', headers:Object.assign({'Content-Type':'application/json'}, csrfHeaders()), body:JSON.stringify({user_id: userId, setor_ids: setorIds}) }).catch(() => {});
-    }
-    if (isAdmin) {
-      const existing = cachedUserEmpresas.find(u => u.userId === userId);
-      if (existing) {
-        cachedUserEmpresas = cachedUserEmpresas.filter(u => u.userId !== userId);
-        const t = db.transaction("user_empresas", "readwrite");
-        t.objectStore("user_empresas").clear();
-        cachedUserEmpresas.forEach(a => t.objectStore("user_empresas").put(a));
+    // Salvar role_id e grupo_empresas_id no usuário
+    fetch('/api/user-role', { method:'POST', headers:Object.assign({'Content-Type':'application/json'}, csrfHeaders()), body:JSON.stringify({user_id: userId, role_id: roleId}) }).catch(() => {});
+
+    if (userId) {
+      // Salvar (ou limpar, se vazio) a relação usuário -> grupo de empresas
+      fetch('/api/user-grupo-empresas', { method:'POST', headers:Object.assign({'Content-Type':'application/json'}, csrfHeaders()), body:JSON.stringify({user_id: userId, grupo_empresas_id: grupoEmpresasId || null}) }).catch(() => {});
+      // Empresas individuais: usadas apenas quando não há grupo selecionado
+      if (!grupoEmpresasId) {
+        fetch('/api/user-empresas', { method:'POST', headers:Object.assign({'Content-Type':'application/json'}, csrfHeaders()), body:JSON.stringify({user_id: userId, empresa_ids: empresaIds}) }).catch(() => {});
       }
-      const existingSetores = cachedUserSetores.find(u => u.userId === userId);
-      if (existingSetores) {
-        cachedUserSetores = cachedUserSetores.filter(u => u.userId !== userId);
-        const ts = db.transaction("user_setores", "readwrite");
-        ts.objectStore("user_setores").clear();
-        cachedUserSetores.forEach(a => ts.objectStore("user_setores").put(a));
-      }
-    } else {
-      if (empresaIds.length) {
-        saveUserEmpresas(userId, empresaIds);
-      }
-      saveUserSetores(userId, setorIds);
     }
     fecharModal('modal-usuario');
     renderUsuarios();
@@ -5074,8 +5837,8 @@ function salvarUsuario() {
 
   getCsrfToken().then(() => {
   const req = _editandoUsuario
-    ? fetch('/api/users/' + _editandoUsuario, { method:'PUT', headers:Object.assign({'Content-Type':'application/json'}, csrfHeaders()), body:JSON.stringify({full_name, email, role, ...(password ? {password} : {})}) })
-    : fetch('/api/users', { method:'POST', headers:Object.assign({'Content-Type':'application/json'}, csrfHeaders()), body:JSON.stringify({username, full_name, email, password, role}) });
+    ? fetch('/api/users/' + _editandoUsuario, { method:'PUT', headers:Object.assign({'Content-Type':'application/json'}, csrfHeaders()), body:JSON.stringify({full_name, email, role: roleId, role_id: roleId, ...(password ? {password} : {})}) })
+    : fetch('/api/users', { method:'POST', headers:Object.assign({'Content-Type':'application/json'}, csrfHeaders()), body:JSON.stringify({username, full_name, email, password, role: roleId, role_id: roleId}) });
   req.then(r=>r.json()).then(d=>{
     if (d.ok) { onUserSaved(_editandoUsuario || d.user?.id); }
     else if (d.erro === 'Nao autenticado' || d.erro?.includes('Sessao')) { sessionStorage.removeItem('logged_in'); sessionStorage.removeItem('user'); mostrarLogin(); }
@@ -5117,7 +5880,7 @@ function renderUsuarios() {
       let filteredUsers = users;
       if (isLoggedSetorAdmin) {
         filteredUsers = users.filter(u => {
-          if (u.role === 'admin') return false;
+          if (u.role_id === 'role_admin' || u.role === 'admin') return false;
           if (u.id === loggedUser.id) return true;
           if (!hasSetorFilter) return true;
           const us = getUserSetores(u.id);
@@ -5128,18 +5891,23 @@ function renderUsuarios() {
 
       tb.innerHTML = filteredUsers.map(u => {
         const ue = getUserEmpresas(u.id);
-        const empNomes = u.role === 'admin' ? '<span style="color:#2e7d52;font-weight:500;">Todas</span>' : (ue ? ue.empresaIds.map(eid => {
+        const empNomes = (u.role_id === 'role_admin' || u.role === 'admin') ? '<span style="color:#2e7d52;font-weight:500;">Todas</span>' : (ue ? ue.empresaIds.map(eid => {
           const e = empresas.find(x => x.id === eid);
           return e ? e.nome : null;
         }).filter(Boolean).join(', ') : '—');
         const sectors = getSectors();
         const us = getUserSetores(u.id);
-        const setorNomes = u.role === 'admin' ? '<span style="color:#2e7d52;font-weight:500;">Todos</span>' : (us ? us.setorIds.map(sid => {
+        const setorNomes = (u.role_id === 'role_admin' || u.role === 'admin') ? '<span style="color:#2e7d52;font-weight:500;">Todos</span>' : (us ? us.setorIds.map(sid => {
           const s = sectors.find(x => x.id === sid);
           return s ? s.nome : null;
         }).filter(Boolean).join(', ') : '—');
-        const canEdit = isLoggedAdmin || u.id === loggedUser.id || (isLoggedSetorAdmin && setorNomes !== '—');
-        const roleLabel = u.role === 'admin' ? 'Admin' : (u.role === 'setor_admin' ? 'Admin Setor' : 'Usuário');
+        const targetIsAdmin = u.role_id === 'role_admin' || u.role === 'admin';
+        // Quem tem a matriz de permissões (ex.: perfil financeiro) gerencia
+        // usuários como o admin, mas continua sem mexer em administradores.
+        const podeMatriz = !isLoggedAdmin && !isLoggedSetorAdmin && !targetIsAdmin && pode('usuarios', 'update');
+        const podeMatrizExcluir = !isLoggedAdmin && !isLoggedSetorAdmin && !targetIsAdmin && pode('usuarios', 'delete');
+        const canEdit = isLoggedAdmin || podeMatriz || u.id === loggedUser.id || (isLoggedSetorAdmin && setorNomes !== '—');
+        const roleLabel = (u.role_id === 'role_admin' || u.role === 'admin') ? 'Admin' : ((u.role_id === 'role_admin_setor' || u.role === 'setor_admin') ? 'Admin Setor' : 'Usuário');
         return `<tr>
         <td>${escapeHtml(String(u.id))}</td><td>${escapeHtml(u.username)}</td><td>${escapeHtml(u.full_name)}</td><td>${escapeHtml(u.email || '—')}</td>
         <td>${roleLabel}</td>
@@ -5149,7 +5917,7 @@ function renderUsuarios() {
         <td>${u.created_at || '-'}</td>
         <td style="display:flex;gap:4px;">
           ${canEdit ? `<button class="btn btn-sm btn-primary" onclick='abrirModalUsuario(${JSON.stringify(u).replace(/'/g,"'")})'>Editar</button>` : ''}
-          ${u.id === 1 ? '<span style="color:#aaa;font-size:0.78rem;">—</span>' : (isLoggedAdmin ? `<button class="btn btn-sm btn-danger" onclick="excluirUsuario(${escapeHtml(String(u.id))})">Inat</button>` : '')}
+          ${u.id === 1 ? '<span style="color:#aaa;font-size:0.78rem;">—</span>' : ((isLoggedAdmin || podeMatrizExcluir) ? `<button class="btn btn-sm btn-danger" onclick="excluirUsuario(${escapeHtml(String(u.id))})">Inat</button>` : '')}
         </td>
       </tr>`;
       }).join('');
@@ -5157,6 +5925,158 @@ function renderUsuarios() {
       tb.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#aaa;padding:32px">Servidor offline: ' + (e.message || 'conexao falhou') + '</td></tr>';
     });
 }
+
+
+async function carregarGruposEmpresas() {
+  const tbody = document.getElementById('tb-grupos-empresas');
+  if (!tbody) return;
+  try {
+    const res = await fetch('/api/company-groups');
+    const grupos = await res.json();
+    const lista = Array.isArray(grupos) ? grupos : [];
+    if (!lista.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:#888;">Nenhum grupo de empresas criado.</td></tr>';
+      return;
+    }
+    const counts = await Promise.all(lista.map(g =>
+      fetch('/api/company-group-members?group_id=' + encodeURIComponent(g.id))
+        .then(r => r.json()).catch(() => [])
+    ));
+    tbody.innerHTML = lista.map((g, i) => {
+      const qtd = Array.isArray(counts[i]) ? counts[i].length : 0;
+      return '<tr>' +
+        '<td style="text-align:center;padding:10px;">' + (i + 1) + '</td>' +
+        '<td style="padding:10px;font-weight:500;">' + escapeHtml(g.nome) + '</td>' +
+        '<td style="padding:10px;color:#666;font-size:0.85rem;">' + escapeHtml(g.descricao || '-') + '</td>' +
+        '<td style="text-align:center;padding:10px;">' + qtd + '</td>' +
+        '<td style="text-align:center;padding:10px;display:flex;gap:4px;justify-content:center;">' +
+          '<button class="btn btn-sm btn-primary" onclick="abrirModalGrupoEmpresas(\'' + escapeHtml(g.id) + '\')">Editar</button>' +
+          '<button class="btn btn-sm btn-danger" onclick="excluirGrupoEmpresas(\'' + escapeHtml(g.id) + '\')">Excluir</button>' +
+        '</td>' +
+      '</tr>';
+    }).join('');
+  } catch (e) {
+    console.error('Erro ao carregar grupos de empresas:', e);
+  }
+}
+
+async function abrirModalGrupoEmpresas(groupId) {
+  document.getElementById('mge-id').value = groupId || '';
+  document.getElementById('mge-nome').value = '';
+  document.getElementById('mge-descricao').value = '';
+  document.getElementById('mge-title').textContent = groupId ? 'Editar Grupo de Empresas' : 'Novo Grupo de Empresas';
+  const container = document.getElementById('mge-empresas-checkboxes');
+  container.innerHTML = '<span style="color:#888;font-size:0.85rem;">Carregando empresas...</span>';
+  abrirModal('modal-grupo-empresas');
+  try {
+    const [empresasRes, gruposRes, membrosRes] = await Promise.all([
+      fetch('/api/companies').then(r => r.json()),
+      groupId ? fetch('/api/company-groups').then(r => r.json()) : Promise.resolve([]),
+      groupId ? fetch('/api/company-group-members?group_id=' + encodeURIComponent(groupId)).then(r => r.json()).catch(() => []) : Promise.resolve([])
+    ]);
+    const empresas = Array.isArray(empresasRes) ? empresasRes : [];
+    const grupos = Array.isArray(gruposRes) ? gruposRes : [];
+    const membros = Array.isArray(membrosRes) ? membrosRes : [];
+
+    if (groupId) {
+      const g = grupos.find(x => x.id === groupId);
+      if (g) {
+        document.getElementById('mge-nome').value = g.nome || '';
+        document.getElementById('mge-descricao').value = g.descricao || '';
+      }
+    }
+
+    const selecionadas = membros.map(m => m.empresa_id);
+    const ativas = empresas.filter(e => e.active !== 0);
+    if (!ativas.length) {
+      container.innerHTML = '<span style="color:#888;font-size:0.85rem;padding:12px;display:block;">Nenhuma empresa cadastrada.</span>';
+      return;
+    }
+    ativas.sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
+    const todasMarcadas = ativas.every(e => selecionadas.includes(e.id));
+    let html = '<table style="width:100%;border-collapse:collapse;font-size:0.9rem;">' +
+      '<thead><tr style="background:#eef2f7;position:sticky;top:0;">' +
+        '<th style="width:44px;padding:8px;text-align:center;"><input type="checkbox" ' + (todasMarcadas ? 'checked' : '') + ' onclick="mgeMarcarTodas(this.checked)" title="Marcar todas"></th>' +
+        '<th style="text-align:left;padding:8px;">Empresa</th>' +
+        '<th style="text-align:left;padding:8px;width:170px;">CNPJ</th>' +
+        '<th style="text-align:center;padding:8px;width:70px;">UF</th>' +
+      '</tr></thead><tbody>';
+    ativas.forEach(e => {
+      const checked = selecionadas.includes(e.id) ? 'checked' : '';
+      html += '<tr style="border-bottom:1px solid #f0f3f7;">' +
+        '<td style="text-align:center;padding:6px;"><input type="checkbox" class="mge-emp-cb" value="' + escapeHtml(e.id) + '" ' + checked + '></td>' +
+        '<td style="padding:6px 8px;">' + escapeHtml(e.nome) + '</td>' +
+        '<td style="padding:6px 8px;color:#555;">' + escapeHtml(e.cnpj || '—') + '</td>' +
+        '<td style="padding:6px 8px;text-align:center;font-weight:600;">' + escapeHtml(e.uf_cnpj || '—') + '</td>' +
+      '</tr>';
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+  } catch (e) {
+    console.error('Erro ao abrir modal de grupo:', e);
+    container.innerHTML = '<span style="color:#c00;font-size:0.85rem;padding:12px;display:block;">Erro ao carregar empresas.</span>';
+  }
+}
+
+function mgeMarcarTodas(marcar) {
+  document.querySelectorAll('#mge-empresas-checkboxes .mge-emp-cb').forEach(cb => { cb.checked = marcar; });
+}
+
+async function salvarGrupoEmpresas() {
+  const id = document.getElementById('mge-id').value;
+  const nome = document.getElementById('mge-nome').value.trim();
+  const descricao = document.getElementById('mge-descricao').value.trim();
+  if (!nome) { mostrarToast('Informe o nome do grupo', 'erro'); return; }
+  try {
+    await getCsrfToken();
+    const res = await fetch('/api/company-groups', {
+      method: 'POST',
+      headers: csrfHeaders(),
+      body: JSON.stringify({ id: id || undefined, nome, descricao, csrf_token: csrfToken })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.erro || 'Erro ao salvar grupo');
+
+    const empresaIds = [];
+    document.querySelectorAll('#mge-empresas-checkboxes input:checked').forEach(cb => empresaIds.push(cb.value));
+    const membroRes = await fetch('/api/company-group-members', {
+      method: 'POST',
+      headers: csrfHeaders(),
+      body: JSON.stringify({ group_id: data.id, empresa_ids: empresaIds, csrf_token: csrfToken })
+    });
+    const membroData = await membroRes.json();
+    if (!membroData.ok) throw new Error(membroData.erro || 'Erro ao salvar empresas do grupo');
+
+    mostrarToast('Grupo de empresas salvo com sucesso!', 'sucesso');
+    fecharModal('modal-grupo-empresas');
+    carregarGruposEmpresas();
+  } catch (e) {
+    mostrarToast('Erro ao salvar: ' + e.message, 'erro');
+  }
+}
+
+async function excluirGrupoEmpresas(groupId) {
+  if (!confirm('Excluir este grupo de empresas?')) return;
+  try {
+    await getCsrfToken();
+    const res = await fetch('/api/company-groups/' + encodeURIComponent(groupId), {
+      method: 'DELETE',
+      headers: csrfHeaders(),
+      body: JSON.stringify({ csrf_token: csrfToken })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      mostrarToast('Grupo excluído', 'sucesso');
+      carregarGruposEmpresas();
+    } else {
+      mostrarToast(data.erro || 'Erro ao excluir', 'erro');
+    }
+  } catch (e) {
+    mostrarToast('Erro ao excluir: ' + e.message, 'erro');
+  }
+}
+
+
 function carregarConfig() {
   fetch('/api/config-email')
     .then(r=>r.json()).then(cfg => {
@@ -5934,7 +6854,7 @@ function enviarPergunta(pergunta) {
 
 function voltarInicio() {
   const container = document.getElementById('chat-messages');
-  container.innerHTML = '<div class="chat-msg bot">Ola! Sou o assistente do sistema de Controle de Contratos. Como posso ajudar?</div>';
+  container.innerHTML = '<div class="chat-msg bot">Ola! Sou o assistente do sistema de Gestao de Contratos, Licitacoes e Certidoes. Como posso ajudar?</div>';
   const sugestoes = document.getElementById('chat-suggestions');
   sugestoes.classList.remove('open');
   document.getElementById('chat-input').value = '';
