@@ -14,7 +14,17 @@
       "use": "@vercel/static"
     }
   ],
+  "crons": [
+    {
+      "path": "/api/email-diario",
+      "schedule": "30 11 * * *"
+    }
+  ],
   "routes": [
+    {
+      "src": "/api/email-diario",
+      "dest": "/api/email-diario.js"
+    },
     {
       "src": "/api/(.*)",
       "dest": "/api/index.js?path=$1"

@@ -66,6 +66,8 @@ Ao digitar o CNPJ, preenche e bloqueia a Empresa Vencedora automaticamente.
 Cada licitacao tem ADITIVOS: abra a licitacao e clique em Registrar Aditivo.
 Exclusao: apenas administrador (exclusao definitiva). Qualquer usuario com permissao pode inativar/reativar.
 Filtros: empresa, status, numero da licitacao.
+Botao "Ver" abre o Resumo da Licitacao: dados do contrato, anexos, "Gerar Resumo com IA" e a tabela Certidoes Obrigatorias da Empresa (uma por tipo).
+Nessa tabela: certidoes com "Federal" no nome valem para QUALQUER CNPJ/filial e aparecem mesmo vencidas; certidoes estaduais e municipais precisam da mesma UF da licitacao (na municipal, prioriza a cidade do contrato). Todas marcadas como Obrigatorias. Se faltar Federal, Estadual da UF ou Municipal da UF, aparece linha vermelha "Nao encontrada". A coluna Anexo mostra o arquivo da certidao com botao Ver.
 
 == CERTIFICADOS DIGITAIS ==
 Clique em "Novo Certificado Digital". Campos: CNPJ/CPF*, Empresa*, UF, Data de Inclusao*, Data de Validade*, Senha do certificado (fica visivel, com botao Copiar) e Arquivo (.pdf/.jpg/.png).
@@ -80,8 +82,14 @@ Exclusao: apenas administrador. Badge mostra "Vencido" ou "Vence em X dias".
 - Empresas: cadastre nome e CNPJ (sem duplicidade). Pode inativar sem excluir.
 - Setores e Tipos de Certidao: cadastros auxiliares com inativar.
 - Destinatarios: quem recebe os alertas por e-mail (email, nome, empresas, setores, tipos de alerta).
-- E-mail: configure SMTP (servidor, porta, remetente, senha) e prazos de alerta. Botoes de envio manual.
+- E-mail: configure SMTP (servidor, porta, remetente, senha). Botoes de envio manual de alertas.
 - Historico: registro de acoes (auditoria).
+
+== ALERTAS POR E-MAIL ==
+Envio AUTOMATICO diario as 08:30 para os destinatarios cadastrados (Configuracao > Destinatarios), com alertas de Contratos, Certidoes, Contrato Licitacoes e Certificados Digitais, conforme os tipos marcados em cada destinatario e as empresas vinculadas a ele.
+Localmente o envio automatico ocorre enquanto o servidor estiver aberto; na Vercel e um agendamento (cron).
+Tambem ha envio manual pelos botoes em Configuracao > E-mail (um botao por tipo de alerta).
+So sao enviados e-mails quando ha algo para alertar (vencidos ou proximos do vencimento).
 
 == PERMISSOES ==
 Perfis: admin (acesso total), setor_admin (restrito aos seus setores), usuario (permissoes basicas).
@@ -91,7 +99,8 @@ O menu e os botoes se ajustam conforme a permissao do usuario.
 == RECURSOS ==
 - Sino de notificacoes: alertas de vencimentos.
 - Tema claro/escuro: icone de lua/sol no canto superior direito.
-- Exportacao CSV (Excel): botoes de exportar nas tabelas.
+- Exportacao de relatorios: botoes discretos "Excel" e "PDF" em todas as telas (Dashboard, Certidoes, Contrato Licitacoes e Certificados Digitais). Excel baixa arquivo .csv (abre no Excel). PDF abre janela de impressao: escolha "Salvar como PDF". Exporta os dados com os filtros aplicados na tela; o Dashboard inclui o resumo e os graficos no PDF.
+- Detalhe dos graficos do Dashboard: clique em uma fatia ou bloco para ver a lista detalhada (Empresa, Tipo, CNPJ, UF, Cidade, Validade, Status).
 - Anexos: armazenados no sistema; PDFs podem ser visualizados, baixados e impressos.
 - Senha esquecida: use "Esqueci a senha" na tela de login.
 
@@ -109,14 +118,16 @@ function respostaOffline(pergunta) {
     return 'Para cadastrar empresas, va em Configuracao > Empresas. Informe nome e CNPJ (sem duplicidade). CNPJ e CPF sao aceitos nos cadastros. Voce pode inativar uma empresa sem exclui-la.'
   if (['usuario', 'senha', 'login', 'perfil', 'permissao'].some(w => p.includes(w)))
     return 'Usuarios: Configuracao > Usuarios. La voce cria usuarios, define o perfil (admin, setor_admin ou usuario) e quais empresas/setores cada um acessa. Para alterar sua propria senha: Configuracao > Minha Conta. Senha esquecida: use "Esqueci a senha" no login.'
-  if (['email', 'smtp', 'alerta', 'lembrete', 'notificacao', 'destinatario'].some(w => p.includes(w)))
-    return 'Configure o e-mail em Configuracao > E-mail (servidor SMTP, porta, remetente, senha). Os destinatarios dos alertas sao cadastrados em Configuracao > Destinatarios. Ha botoes de envio manual de alertas.'
-  if (['dashboard', 'inicio', 'resumo', 'grafico'].some(w => p.includes(w)))
-    return 'O Dashboard mostra cards de resumo (certidoes vencendo/vencidas, licitacoes, certificados digitais) e graficos. Use o filtro por Grupo de Empresas para concentrar a visao.'
+  if (['email', 'smtp', 'alerta', 'lembrete', 'notificacao', 'destinatario', 'automatico', 'automático'].some(w => p.includes(w)))
+    return 'Configure o e-mail em Configuracao > E-mail (servidor SMTP, porta, remetente, senha). Os destinatarios sao cadastrados em Configuracao > Destinatarios (marque os tipos de alerta e as empresas de cada um). O envio e AUTOMATICO todo dia as 08:30 (contratos, certidoes, licitacoes e certificados digitais), desde que haja vencidos ou proximos do vencimento. Tambem ha botoes de envio manual em Configuracao > E-mail.'
+  if (['dashboard', 'inicio', 'resumo do dashboard', 'grafico'].some(w => p.includes(w)))
+    return 'O Dashboard mostra cards de resumo (certidoes vencendo/vencidas, licitacoes, certificados digitais) e graficos, com filtro por Grupo de Empresas. Clique em um card ou numa parte do grafico para ver a lista detalhada (com UF e Cidade). Ha botoes Excel e PDF para exportar o relatorio do Dashboard.'
   if (['tema', 'escuro', 'claro'].some(w => p.includes(w)))
     return 'Para mudar o tema, clique no icone da lua/sol no canto superior direito do header.'
-  if (['exportar', 'excel', 'csv', 'planilha'].some(w => p.includes(w)))
-    return 'Nas tabelas de Certidoes, Licitacoes e Certificados Digitais ha botoes de exportacao CSV (abre no Excel).'
+  if (['exportar', 'excel', 'csv', 'planilha', 'pdf', 'relatorio', 'impressão', 'impressao'].some(w => p.includes(w)))
+    return 'Em todas as telas (Dashboard, Certidoes, Contrato Licitacoes e Certificados Digitais) ha botoes discretos "Excel" e "PDF" no canto superior. Excel baixa um .csv que abre no Excel. PDF abre uma janela de impressao: escolha "Salvar como PDF". A exportacao respeita os filtros aplicados na tela; o Dashboard inclui resumo e graficos.'
+  if (['resumo', 'obrigatoria', 'obrigatorias', 'resumo com ia', 'botao ver'].some(w => p.includes(w)))
+    return 'No botao "Ver" de cada licitacao abre o Resumo: dados do contrato, anexos, "Gerar Resumo com IA" e as Certidoes Obrigatorias da Empresa (uma por tipo). Certidoes com "Federal" no nome valem para qualquer filial/CNPJ e aparecem mesmo vencidas; estaduais e municipais precisam da mesma UF da licitacao (municipal prioriza a cidade). Se faltar Federal, Estadual da UF ou Municipal da UF, aparece em vermelho "Nao encontrada". A coluna Anexo tem o botao Ver para abrir o arquivo.'
   if (['historico', 'auditoria', 'log'].some(w => p.includes(w)))
     return 'O historico de acoes fica em Configuracao > Historico. La voce ve quem fez o que e quando.'
   if (['grupo', 'grupos'].some(w => p.includes(w)))
@@ -127,7 +138,7 @@ function respostaOffline(pergunta) {
     return 'O sistema calcula automaticamente o status de certidoes e certificados digitais (Valida, Vencendo, Vencida) com base na data de validade. O sino de notificacoes e o Dashboard mostram os proximos vencimentos.'
   if (['filtro', 'filtrar', 'busca', 'pesquisar'].some(w => p.includes(w)))
     return 'Cada tela de listagem (Certidoes, Licitacoes, Certificados Digitais) tem filtros no topo (por empresa, UF, tipo, status, etc.). Use-os para encontrar registros rapidamente.'
-  return 'Posso ajudar com: certidoes, licitacoes, certificados digitais, empresas, usuarios e permissoes, grupos de empresas, setores, destinatarios de e-mail, alertas, dashboard, filtros e exportacao. Sua pergunta e sobre qual assunto?'
+  return 'Posso ajudar com: certidoes, licitacoes (incluindo resumo e certidoes obrigatorias), certificados digitais, empresas, usuarios e permissoes, grupos de empresas, setores, destinatarios de e-mail e envio automatico de alertas, dashboard, filtros e exportacao (Excel/PDF). Sua pergunta e sobre qual assunto?'
 }
 
 function json(data, status = 200, extraHeaders = {}) {

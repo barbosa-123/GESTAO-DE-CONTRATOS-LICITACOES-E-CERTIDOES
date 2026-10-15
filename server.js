@@ -22,6 +22,36 @@ const apiPath = path.join(__dirname, 'api', 'index.js')
 const apiUrl = 'file:///' + apiPath.replace(/\\/g, '/') + '?t=' + Date.now()
 let apiHandler = (await import(apiUrl)).default
 
+const emailDiarioPath = path.join(__dirname, 'api', 'email-diario.js')
+const emailDiarioUrl = 'file:///' + emailDiarioPath.replace(/\\/g, '/') + '?t=' + Date.now()
+const emailDiarioHandler = (await import(emailDiarioUrl)).default
+
+const EMAIL_DIARIO_HORA = 8
+const EMAIL_DIARIO_MINUTO = 30
+
+function agendarEmailDiario() {
+  const agora = new Date()
+  const alvo = new Date(agora)
+  alvo.setHours(EMAIL_DIARIO_HORA, EMAIL_DIARIO_MINUTO, 0, 0)
+  if (alvo <= agora) alvo.setDate(alvo.getDate() + 1)
+  const ms = alvo - agora
+  console.log(`[EMAIL AUTO] Proximo envio automatico: ${alvo.toLocaleString('pt-BR')}`)
+  setTimeout(async () => {
+    try {
+      console.log('[EMAIL AUTO] Iniciando envio automatico diario...')
+      const fakeRes = {
+        status() { return this },
+        json(body) { console.log('[EMAIL AUTO] Resultado:', JSON.stringify(body)) },
+        send(body) { console.log('[EMAIL AUTO] Resultado:', body) },
+      }
+      await emailDiarioHandler({ method: 'GET', headers: {} }, fakeRes)
+    } catch (e) {
+      console.error('[EMAIL AUTO] Erro no envio automatico:', e.message)
+    }
+    agendarEmailDiario()
+  }, ms)
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`)
   let pathname = url.pathname
@@ -85,4 +115,5 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`[LOCAL] Rodando em http://localhost:${PORT}`)
+  agendarEmailDiario()
 })

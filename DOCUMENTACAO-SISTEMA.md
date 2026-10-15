@@ -1,8 +1,9 @@
-# DOCUMENTACAO TECNICA - GESTAO DE CONTRATOS LICITACOES
+# DOCUMENTACAO TECNICA - GESTAO DE CONTRATOS, LICITACOES E CERTIDOES
 
-**Versao:** 1.0.0
-**Stack:** SPA (index.html) + API Serverless (api/index.js) + Supabase (PostgreSQL)
-**Deploy:** Vercel (controle-de-contratos-omega.vercel.app)
+**Versao:** 1.2.0 (15/10/2026)
+**Stack:** SPA (index.html, 7319 linhas) + API Serverless (api/index.js, 3215 linhas) + Supabase (PostgreSQL)
+**Deploy:** Vercel (controle-de-contratos-omega.vercel.app) + execucao local (server.js, porta do .env)
+**Modo de sync atual:** MANUAL (`SYNC_ENABLED = false` no index.html)
 
 ---
 
@@ -11,500 +12,383 @@
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                        BROWSER (SPA)                        │
-│  index.html (~7185 linhas)                                  │
+│  index.html (7319 linhas)                                   │
 │  - IndexedDB (cache local)                                  │
-│  - Sync bidirecional com o servidor                         │
-│  - Realtime via WebSocket (Supabase)                        │
+│  - Gravacao direta via API REST (apiCall POST/PUT/DELETE)   │
+│  - Pull do servidor ao entrar em cada aba                   │
+│  - Exportacao Excel (CSV) / PDF via navegador               │
 └──────────────────────┬──────────────────────────────────────┘
-                       │ fetch() / WebSocket
+                       │ fetch()
+┌──────────────────────▼──────────────────────────────────────┐
+│              SERVIDOR LOCAL (server.js)                      │
+│  - Serve arquivos estaticos + delega /api/*                  │
+│  - Agenda envio automatico de e-mail diario as 08:30         │
+│    (executa api/email-diario.js enquanto aberto)             │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ (em producao: Vercel)
 ┌──────────────────────▼──────────────────────────────────────┐
 │                   VERCEL (Serverless)                        │
-│  api/index.js (~2182 linhas) - Funcao unica                 │
-│  - Todas as rotas em um único arquivo                       │
-│  - JWT auth via cookie                                      │
-│  - CSRF protection                                          │
+│  api/index.js (3215 linhas) - Todas as rotas /api/*          │
+│  api/email-diario.js (484 linhas) - Cron diario 08:30 BRT    │
+│  - JWT auth via cookie + CSRF                                │
 └──────────────────────┬──────────────────────────────────────┘
                        │ @supabase/supabase-js
 ┌──────────────────────▼──────────────────────────────────────┐
 │                    SUPABASE (PostgreSQL)                     │
-│  - 15 tabelas                                               │
+│  - ~20 tabelas                                              │
 │  - Service Role Key (acesso total)                          │
-│  - Realtime (WebSocket) para notificacoes                   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Fluxo de Dados
+### Fluxo de Dados (modo atual - manual)
 
 ```
 1. Login → JWT cookie + CSRF token
-2. loadFromServer() → GET /api/sync → dados do Supabase → cache local (IndexedDB)
-3. syncToServer() → POST /api/sync → envia todos os registros do cache ao servidor
-4. Realtime → WebSocket detecta mudanças → dispara loadFromServer + syncToServer
-5. CRUD local → salva no IndexedDB → syncToServer envia ao servidor
+2. Abrir aba (Certidoes / Licitacoes / Certificados) → loadFromServer()
+   → GET /api/sync → dados do Supabase → cache local (IndexedDB) → render
+3. CRUD (salvar/editar/excluir) → apiCall(POST/PUT/DELETE) direto na API
+   → e atualiza o cache local (IndexedDB)
+4. Botao "Atualizar" (relogio) em cada lista → loadFromServer() com
+   feedback visual (⏳ Atualizando... → ✅ / ❌)
 ```
 
-### Mutex Flags
-
-| Flag | Funcao |
-|------|--------|
-| `_syncRunning` | Impede concorrencia no sync pull (loadFromServer) |
-| `_saveSyncRunning` | Impede concorrencia no sync push (syncToServer) e saves |
-| `_lastSyncAt` | Timestamp do ultimo sync bem-sucedido |
-| `_serverOffset` | Diferenca de relogio entre cliente e servidor |
+> **Importante:** `SYNC_ENABLED = false` (index.html:7234) desativa o sync
+> automatico (push, polling de 5 min e Supabase Realtime). O pull continua
+> acontecendo ao entrar nas abas e pelo botao "Atualizar". Para reativar o
+> modo automatico, altere a flag para `true`.
 
 ---
 
-## 2. VARIAVEIS DE AMBIENTE
+## 2. TELAS E FUNCIONALIDADES
+
+### 2.1 Dashboard
+- Cards de resumo: certidoes prox. vencer/vencidas, licitacoes total/em andamento/vencidas, certificados digitais total/prox. vencer/vencidos
+- 3 graficos (Chart.js): Certidoes por Status, Licitacoes por Status, Certidoes — Vencimento nos Proximos 6 Meses
+- Filtro por Grupo de Empresas
+- **Clique nos cards/graficos** abre modal de detalhe com Empresa, Tipo, CNPJ, **UF**, **Cidade**, Validade e Status
+- Botoes de exportacao Excel/PDF do relatorio do Dashboard (inclui os graficos no PDF)
+
+### 2.2 Certidoes
+- Cadastro: Empresa*, Tipo*, CNPJ/CPF*, UF*, Cidade, Emissao*, Validade* (ou "Sem Validade"), Status, Observacoes, Arquivo* (obrigatorio)
+- CNPJ preenche Empresa/UF automaticamente (lookup por CNPJ)
+- Status calculado: Valida / Vencendo (<=30 dias) / Vencida
+- Tabela com filtros (empresa, UF, tipo, status), ordenacao por clique e paginacao
+- Botao **Atualizar** (recarrega do servidor, com feedback ⏳/✅/❌)
+- Botoes "Excel" e "PDF" (exportam com os filtros aplicados)
+- Exclusao: apenas administrador — **soft delete** (`PUT /api/certidoes/:id` com `deleted_at`)
+
+### 2.3 Contrato Licitações
+- Cadastro: Numero*, Nome, CNPJ*, Edital, UF, Cidade, Objeto*, Empresa Vencedora, Valor, Indice de Reajuste, Homologacao*, Vigencia (inicio*/fim*), Status, Observacoes, Arquivos* (multiplos)
+- Campos obrigatorios: Numero da Licitacao, Objeto, CNPJ, Data Homologacao, Inicio/Fim de Vigencia e Arquivo
+- Aditivos por licitacao (Registrar Aditivo)
+- Filtros: empresa, status, numero. Ordenacao e paginacao
+- Botao **Atualizar** (recarrega do servidor, com feedback)
+- Botoes "Excel" e "PDF"
+- **Inativar/Reativar:** qualquer usuario com permissao; **Excluir: apenas administrador (DELETE definitivo — nao usa soft delete)**
+- **Botao "Ver" — Resumo da Licitacao:**
+  - Dados do contrato, anexos e "Gerar Resumo com IA"
+  - Tabela **Certidoes Obrigatorias da Empresa (uma por tipo):**
+    - Filtra pelo **CNPJ** da licitacao (fallback: empresa)
+    - **Federal** = tipo com "Federal" no nome: vale para **qualquer CNPJ/filial**, aparece **mesmo vencida**, nao filtra UF
+    - **Estadual/Municipal** = precisa da mesma **UF** da licitacao (municipal prioriza a cidade do contrato)
+    - Demais tipos: precisam da mesma UF
+    - Uma linha por tipo (deduplicada): prioriza valida > vencida, maior validade, emissao mais recente
+    - Coluna **Obrigatoria**; se faltar Federal, Estadual da UF ou Municipal da UF → linha vermelha **"Nao encontrada"**
+    - Coluna **Anexo** com botao Ver (abre o arquivo da certidao)
+
+### 2.4 Certificados Digitais
+- Cadastro: CNPJ/CPF*, Empresa*, UF, Inclusao*, Validade*, Senha (consultavel com botao "Senha"/"Copiar"), Arquivo
+- Badge "Vencido" / "Vence em X dias"
+- Duas telas: Pagina Principal e Configuracao (mesmo CRUD)
+- Botao **Atualizar** em ambas as telas
+- Filtro por empresa; botoes "Excel" e "PDF"
+- Exclusao: **soft delete** (`DELETE /api/certificados-digitais/:id` grava `deleted_at`)
+
+### 2.5 Configuracao (submenu)
+Subsecoes reais (`showConfigSub`): Minha Conta, Usuarios (perfis + empresas/setores), Empresas, Grupos de Empresas, Certificados Digitais, Setores, Tipos de Certidao, Destinatarios, E-mail (SMTP + envio manual de alertas), Historico (auditoria), Sistema (Informacoes do Sistema).
+
+> Perfis `setor_admin` tem acesso restrito (nao ve Certificados Digitais,
+> Setores, E-mail, Historico e Sistema; cai em Usuarios).
+
+### 2.6 Assistente Virtual
+- Botao "?" no canto inferior direito; usa Google Gemini (GEMINI_API_KEY) com respostas offline de fallback
+- Base de conhecimento cobre: cadastros, certidoes obrigatorias do resumo, exportacao Excel/PDF, envio automatico de e-mails, dashboard, filtros, permissoes
+- Botoes de sugestao: cadastrar certidao/licitacao/certificado/empresa, usuarios, alertas, dashboard, exportar, resumo da licitacao, envio automatico, alterar senha
+
+### 2.7 Recursos gerais
+- Sino de notificacoes (vencimentos)
+- Tema claro/escuro (icone lua/sol, persistido em localStorage)
+- Indicador de sincronizacao no header
+- Toasts de feedback (sucesso/erro/alerta)
+
+---
+
+## 3. VARIAVEIS DE AMBIENTE
 
 | Variavel | Onde | Descricao |
 |----------|------|-----------|
-| `SUPABASE_URL` | Vercel Env | URL do projeto Supabase |
-| `SUPABASE_SERVICE_ROLE_KEY` | Vercel Env | Chave de servico do Supabase (acesso total) |
-| `JWT_SECRET` | Vercel Env + .env | Segredo para assinatura de tokens JWT |
-| `ADMIN_PASSWORD` | Vercel Env + .env | Senha do usuario admin (fallback se nao existe no DB) |
-| `SESSION_TIMEOUT_HOURS` | Codigo | Timeout da sessao em horas (default: 8) |
-| `GEMINI_API_KEY` | Codigo | Chave da API Google Gemini (assistente virtual) |
+| `SUPABASE_URL` | Vercel Env + .env | URL do projeto Supabase |
+| `SUPABASE_SERVICE_ROLE_KEY` | Vercel Env + .env | Chave de servico (acesso total) |
+| `JWT_SECRET` | Vercel Env + .env | Assinatura dos tokens JWT e da senha SMTP criptografada |
+| `ADMIN_PASSWORD` | Vercel Env + .env | Fallback da senha admin |
+| `GEMINI_API_KEY` | Vercel Env + .env | Assistente virtual (Google Gemini) |
+| `PORT` | .env | Porta do servidor local (default 3001; usa 5000 no .env) |
+| `SESSION_TIMEOUT_HOURS` | .env / Codigo | Timeout da sessao (default: 8h) |
+| `EMAIL_HOST` / `EMAIL_PORT` / `EMAIL_USER` / `EMAIL_PASS` | .env | SMTP (fallback; a config principal fica em `email_config` no banco) |
+| `CORS_ALLOWED_ORIGINS` | .env | Origens permitidas (separadas por virgula) |
 
 ---
 
-## 3. BANCO DE DADOS (SUPABASE)
+## 4. BANCO DE DADOS (SUPABASE)
 
-### 3.1 Diagrama de Tabelas
+### 4.1 Tabelas Principais
 
-```
-users ──────────┬─────────────── contracts ───────────────┬───────────── payments
-                │                                        │
-                ├── password_resets                      ├── additives
-                │                                        │
-                ├── user_setores ── sectors              ├── audit_log
-                │
-                └── user_empresas ── companies
-
-certidoes (independente)
-licitacoes (independente)
-tipos_certidao (catalogo de tipos de certidao)
-destinatarios (independente)
-email_config (singleton, id=1)
-sync_log (log de auditoria)
-```
-
-### 3.2 Tabelas Principais
-
-#### `users`
-| Coluna | Tipo | Descricao |
-|--------|------|-----------|
-| id | SERIAL PK | ID auto-incremental |
-| username | TEXT UNIQUE | Nome de login |
-| full_name | TEXT | Nome completo |
-| email | TEXT | Email |
-| password_hash | TEXT | Hash da senha (bcrypt) |
-| role | TEXT DEFAULT 'user' | 'admin' ou 'user' |
-| active | INTEGER DEFAULT 1 | 1=ativo, 0=inativo |
-| created_at | TEXT | Data de criacao |
-
-#### `contracts`
-| Coluna | Tipo | Descricao |
-|--------|------|-----------|
-| id | TEXT PK | UUID |
-| numero | TEXT UNIQUE | Numero do contrato |
-| fornecedor | TEXT | Nome do fornecedor/cliente |
-| cnpj | TEXT | CNPJ/CPF |
-| objeto | TEXT | Objeto do contrato |
-| valor_total | REAL | Valor total |
-| inicio / fim | TEXT |Datas de vigencia |
-| tem_parcelas | INTEGER | 1=tem parcelas, 0=nao |
-| qtd_parcelas | INTEGER | Quantidade de parcelas |
-| valor_parcela | REAL | Valor da parcela |
-| dia_vencimento | INTEGER | Dia do vencimento |
-| empresa_id | TEXT | FK para companies |
-| active | INTEGER DEFAULT 1 | 1=ativo, 0=inativo |
-| arquivo_contrato | TEXT | JSON do arquivo (base64) |
-| created_at / updated_at | TEXT | Timestamps |
-
-#### `payments`
-| Coluna | Tipo | Descricao |
-|--------|------|-----------|
-| id | TEXT PK | UUID |
-| contract_id | TEXT FK | Referencia ao contrato (CASCADE DELETE) |
-| descricao | TEXT | Descricao do pagamento |
-| vencimento | TEXT | Data de vencimento |
-| valor | REAL | Valor |
-| data_pagamento | TEXT | Data efetiva do pagamento |
-| valor_pago | REAL | Valor efetivamente pago |
-| status | TEXT DEFAULT 'pendente' | 'pendente', 'pago', 'atrasado' |
-| comprovante | TEXT | JSON do comprovante (base64) |
-| deleted_at | TEXT | Soft delete |
-| created_at / updated_at | TEXT | Timestamps |
-
-#### `certidoes`
-| Coluna | Tipo | Descricao |
-|--------|------|-----------|
-| id | TEXT PK | UUID |
-| empresa_id | TEXT | FK para companies |
-| cnpj, uf, cidade | TEXT | Dados da empresa |
-| tipo | TEXT | Tipo da certidao (CND Estadual, Federal, etc.) |
-| data_emissao / data_validade | TEXT | Datas |
-| status | TEXT DEFAULT 'pendente' | 'pendente', 'vencida', 'vencendo', 'ok' |
-| arquivo_nome / arquivo_dados | TEXT | Anexo (base64) |
-| deleted_at | TEXT | Soft delete |
-
-#### `licitacoes`
-| Coluna | Tipo | Descricao |
-|--------|------|-----------|
-| id | TEXT PK | UUID |
-| numero_licitacao | TEXT | Numero da licitacao |
-| objeto | TEXT | Objeto |
-| empresa_id | TEXT | FK para companies |
-| contrato_id | TEXT | FK para contracts |
-| valor | REAL | Valor |
-| status | TEXT DEFAULT 'em_andamento' | 'em_andamento', 'inativo' |
-| arquivos | TEXT | JSON array de arquivos |
-| deleted_at | TEXT | Soft delete |
-
-#### `companies`
-| Coluna | Tipo | Descricao |
-|--------|------|-----------|
-| id | TEXT PK | UUID |
-| nome | TEXT | Nome da empresa |
-| cnpj | TEXT | CNPJ |
-| active | INTEGER DEFAULT 1 | Status |
-
-#### `sectors` / `user_setores`
-Setores organizacionais e vinculo com usuarios (N:N).
-
-#### `tipos_certidao`
-Catalogo de tipos de certidao para o formulario de cadastro.
-
-| Coluna | Tipo | Descricao |
-|--------|------|-----------|
-| id | TEXT PK | UUID |
-| nome | TEXT | Nome do tipo de certidao |
-| active | INTEGER DEFAULT 1 | Status (1=ativo, 0=inativo) |
-| criado_em | TEXT | Data de criacao |
-
-#### `destinatarios`
-Destinatarios de alertas por email. Campos `empresa_ids`, `setores`, `alertas` como JSON.
-
-### 3.3 Soft Delete
-
-Tabelas com `deleted_at`:
-- `payments`, `additives`, `certidoes`, `licitacoes`, `destinatarios`
-
-Tabelas com `active`:
-- `contracts` (active=0 = inativo)
-- `companies`, `sectors`, `users`
-
----
-
-## 4. API ENDPOINTS
-
-### 4.1 Autenticacao
-
-| Rota | Metodo | Auth | CSRF | Descricao |
-|------|--------|------|------|-----------|
-| `/api/csrf-token` | GET | Nao | Nao | Retorna token CSRF |
-| `/api/login` | POST | Nao | Nao | Login (username+password) → JWT cookie |
-| `/api/logout` | POST | Sim | Nao | Limpa cookie de sessao |
-| `/api/me` | GET | Sim | Nao | Retorna usuario logado |
-| `/api/forgot-password` | POST | Nao | Nao | Envia email de reset (rate limit: 3/min) |
-| `/api/reset-password` | POST | Nao | Nao | Reseta senha via token |
-| `/api/change-password` | POST | Sim | Sim | Altera senha (requer senha atual) |
-
-### 4.2 CRUD Principal
-
-| Rota | Metodo | Auth | CSRF | Descricao |
-|------|--------|------|------|-----------|
-| `/api/contracts` | GET | Sim | Nao | Lista contratos ativos |
-| `/api/contracts` | POST | Sim | Sim | Cria contrato |
-| `/api/contracts/:id` | PUT | Sim | Sim | Atualiza contrato |
-| `/api/contracts/:id` | DELETE | Admin | Sim | Deleta contrato + pagamentos + aditivos |
-| `/api/payments` | GET | Sim | Nao | Lista pagamentos |
-| `/api/payments` | POST | Sim | Sim | Cria pagamento |
-| `/api/payments/:id` | PUT | Sim | Sim | Atualiza pagamento |
-| `/api/payments/:id` | DELETE | Admin | Sim | Deleta pagamento |
-| `/api/additives` | POST | Sim | Sim | Cria aditivo |
-| `/api/additives/:id` | PUT | Sim | Sim | Atualiza aditivo |
-| `/api/additives/:id` | DELETE | Sim | Sim | Deleta aditivo |
-| `/api/certidoes` | GET | Sim | Nao | Lista certidoes |
-| `/api/certidoes` | POST | Sim | Sim | Cria certidao |
-| `/api/certidoes/:id` | PUT | Sim | Sim | Atualiza certidao (inclui soft delete) |
-| `/api/certidoes/:id` | DELETE | Sim | Sim | Deleta certidao |
-| `/api/licitacoes` | GET | Sim | Nao | Lista licitacoes |
-| `/api/licitacoes` | POST | Sim | Sim | Cria licitacao |
-| `/api/licitacoes/:id` | PUT | Sim | Sim | Atualiza licitacao |
-| `/api/licitacoes/:id` | DELETE | Sim | Sim | Deleta licitacao |
-
-### 4.3 Empresas / Setores / Usuarios
-
-| Rota | Metodo | Auth | CSRF | Descricao |
-|------|--------|------|------|-----------|
-| `/api/companies` | GET | Nao | Nao | Lista empresas |
-| `/api/companies` | POST | Sim | Sim | Cria/upsert empresa |
-| `/api/companies/:id` | PUT | Sim | Sim | Atualiza empresa |
-| `/api/companies/:id` | DELETE | Admin | Sim | Deleta empresa |
-| `/api/sectors` | GET | Sim | Nao | Lista setores |
-| `/api/sectors` | POST | Admin Global | Sim | Cria setor |
-| `/api/sectors/:id` | PUT | Admin Global | Sim | Atualiza setor |
-| `/api/sectors/:id` | DELETE | Admin Global | Sim | Deleta setor |
-| `/api/tipos-certidao` | GET | Sim | Nao | Lista tipos de certidao |
-| `/api/tipos-certidao` | POST | Sim | Sim | Cria tipo de certidao |
-| `/api/tipos-certidao/:id` | PUT | Sim | Sim | Atualiza tipo de certidao |
-| `/api/tipos-certidao/:id` | DELETE | Sim | Sim | Deleta tipo de certidao |
-| `/api/user-setores` | GET | Sim | Nao | Setores do usuario logado |
-| `/api/user-setores` | POST | Admin | Sim | Atribui setores a usuario |
-| `/api/user-empresas` | GET | Sim | Nao | Empresas do usuario logado |
-| `/api/user-empresas` | POST | Admin | Sim | Atribui empresas a usuario |
-| `/api/users` | GET | Admin | Nao | Lista usuarios |
-| `/api/users` | POST | Admin | Sim | Cria usuario |
-| `/api/users/:id` | PUT | Admin | Sim | Atualiza usuario |
-| `/api/users/:id` | DELETE | Admin | Sim | Inativa usuario (active=0) |
-
-### 4.4 Sync (Sincronizacao)
-
-| Rota | Metodo | Auth | CSRF | Descricao |
-|------|--------|------|------|-----------|
-| `/api/sync` | GET | Sim | Nao | Pull: retorna todos os dados (full sync ou incremental com `?since=`) |
-| `/api/sync` | POST | Sim | Sim | Push: upsert de todos os registros do cliente |
-
-### 4.5 Outros
-
-| Rota | Metodo | Auth | CSRF | Descricao |
-|------|--------|------|------|-----------|
-| `/api/config-email` | GET/POST | Sim | Sim | Config SMTP (leitura/gravacao) |
-| `/api/enviar-lembrete` | POST | Sim | Sim | Envia lembretes de pagamento |
-| `/api/enviar-alertas-contratos` | POST | Sim | Sim | Envia alertas de vencimento de contratos |
-| `/api/enviar-alertas-certidoes` | POST | Sim | Sim | Envia alertas de vencimento de certidoes |
-| `/api/enviar-alertas-licitacoes` | POST | Sim | Sim | Envia alertas de vencimento de licitacoes |
-| `/api/upload-file` | POST | Sim | Sim | Upload de arquivo (base64) |
-| `/api/cidades` | GET | Nao | Nao | Lista de cidades brasileiras por UF |
-| `/api/assistente` | POST | Nao | Nao | Assistente virtual (Google Gemini AI) |
-| `/api/admin-reset` | POST | Nao | Nao | Reset admin (bootstrap de usuarios) |
-| `/api/email-diario` | GET | Nao | Nao | Cron: envio diario de alertas (13:00 UTC) |
-
----
-
-## 5. FLUXO DE SINCRONIZACAO (SYNC)
-
-### 5.1 Inicializacao
-
-```
-Login → loadFromServer().then(() => syncToServer())
-         │                        │
-         ▼                        ▼
-    GET /api/sync            POST /api/sync
-    (busca tudo do server)   (envia tudo do cache local)
-```
-
-### 5.2 loadFromServer() - Pull
-
-```
-1. fetch('/api/sync')
-2. Servidor executa queries sequenciais (com timeout e tratamento de erro)
-3. Retorna JSON com: contratos, pagamentos, usuarios, aditivos, empresas,
-   destinatarios, certidoes, licitacoes, sectors, user_setores, server_now
-4. Frontend MAPPING: converte formato servidor → formato frontend
-   Ex: contracts.numero → numero, contracts.fornecedor → parte
-5. Frontend SUBSTITUI cache inteiro (nao usa mergeDelta)
-   cachedContratos = contratos (dados mapeados do servidor)
-6. Salva no IndexedDB
-7. Renderiza pagina ativa
-```
-
-**Observacao importante:** O cache e SUBSTITUIDO completamente pelos dados do servidor. Isso garante que registros deletados em outra maquina desaparecam.
-
-### 5.3 syncToServer() - Push
-
-```
-1. Monta snapshot: TODOS os registros do cache local
-   { contratos: [...], pagamentos: [...], certidoes: [...], ... }
-2. Serializa para JSON
-3. Se payload > 3.5MB: remove arquivos grandes (base64)
-4. Se ainda > 3.5MB: remove todos os arquivos
-5. Envia POST /api/sync
-6. Servidor processa cada entidade:
-   - Se existe no server: compara updated_at
-     - Se incoming <= existing (e nao deletado): ignora (skip)
-     - Se deletado: soft delete (seta deleted_at / active=0)
-     - Se incoming > existing: UPDATE
-   - Se NAO existe no server:
-     - Se deletado: ignora
-     - Se nao: INSERT
-```
-
-### 5.4 Conflitos (Server Wins)
-
-A resolucao de conflitos usa `updated_at`:
-- O registro com `updated_at` mais recente vence
-- Em caso de empate, o servidor prevalece
-
-### 5.5 Protecao contra Soft Delete
-
-Para `certidoes` e `licitacoes`:
-- Se o registro ja tem `deleted_at` no servidor, o sync ignora atualizacoes do cliente
-- Isso evita que outro usuario "des-delete" um registro
-
-### 5.6 Realtime
-
-```
-WebSocket conecta ao Supabase Realtime
-  → Detecta mudanca em qualquer tabela
-  → Cooldown de 30s pos-sync (evita loops)
-  → Debounce de 3s (agrupa mudancas rapidas)
-  → Chama loadFromServer().then(() => syncToServer())
-```
-
----
-
-## 6. SEGURANCA
-
-### 6.1 Autenticacao
-- JWT assinado com `JWT_SECRET`, armazenado em cookie HttpOnly
-- Timeout de sessao configuravel (default: 8 horas)
-- Rate limiting: 10 tentativas de login/min por IP
-
-### 6.2 CSRF
-- Token CSRF gerado por `/api/csrf-token`
-- Requerido em todas as operacoes de escrita (POST, PUT, DELETE)
-- Enviado no header `X-CSRF-Token`
-
-### 6.3 Headers de Seguranca (Vercel)
-```
-X-Content-Type-Options: nosniff
-X-Frame-Options: DENY
-X-XSS-Protection: 1; mode=block
-Content-Security-Policy: default-src 'self'; ...
-```
-
-### 6.4 Controle de Acesso
-- **Admin**: Acesso total (CRUD usuarios, empresas, setores, contratos)
-- **User**: CRUD de dados, leitura de usuarios
-- **Admin Global**: Gerenciamento de setores
-- Usuario id=1 (admin) nao pode ser inativado
-
----
-
-## 7. ARQUITETURA DO FRONTEND
-
-### 7.1 Stack
-- **SPA monolitica**: `index.html` (~7185 linhas)
-- **IndexedDB**: Cache local (database: `controleContratosDB`)
-- **Sem framework**: JavaScript vanilla
-- **Charts**: Chart.js (via CDN)
-
-### 7.2 Tabelas IndexedDB
-| Object Store | Conteudo |
-|-------------|----------|
-| `contratos` | Contratos mapeados |
-| `pagamentos` | Pagamentos mapeados |
-| `certidoes` | Certidoes mapeadas |
-| `licitacoes` | Licitacoes mapeadas |
-| `empresas` | Empresas |
-| `sectors` | Setores |
-| `user_setores` | Atribuicoes usuario-setor |
-| `destinatarios` | Destinatarios de alertas |
-| `tipos` | Tipos de certidao |
-
-### 7.3 Funcoes Principais
-
-| Funcao | Descricao |
+| Tabela | Descricao |
 |--------|-----------|
-| `loadFromServer()` | GET /api/sync → substitui cache local |
-| `syncToServer()` | POST /api/sync → envia todos os registros |
-| `syncRealtime()` | Trigger do WebSocket → load + sync |
-| `renderDashboard()` | Renderiza dashboard com metricas |
-| `renderContratos()` | Lista de contratos |
-| `salvarContrato()` | Salva contrato (com guard _saveSyncRunning) |
-| `excluirCertidao()` | Soft delete via PUT com deleted_at |
-| `mapServerContract(c)` | Converte formato server → frontend |
-| `mergeDelta()` | (LEGADO) Mescla delta do servidor no cache |
+| `users` | Usuarios (username, password_hash, role, active) |
+| `password_resets` | Tokens de reset de senha |
+| `companies` | Empresas (nome, cnpj, active) |
+| `contracts` | Contratos gerais (vinculados a licitacoes via `licitacoes.contrato_id`; usados nos alertas de contratos) |
+| `payments` | Pagamentos dos contratos (usados nos alertas de pagamentos) |
+| `additives` | Aditivos de licitacoes/contratos |
+| `certidoes` | Certidoes (empresa_id, cnpj, uf, cidade, tipo, datas, status, arquivo_nome/arquivo_dados base64, observacoes, deleted_at) |
+| `licitacoes` | Contrato Licitacoes (numero, cnpj, uf, cidade, objeto, valor, vigencia, arquivos JSON, resumo, deleted_at) |
+| `certificados_digitais` | Certificados digitais (empresa_id, cnpj, uf, data_inclusao, data_vencimento, senha, arquivo, deleted_at) |
+| `tipos_certidao` | Catalogo editavel de tipos de certidao |
+| `destinatarios` | Destinatarios de alertas (email, nome, empresa_ids JSON, setores JSON, alertas JSON) |
+| `email_config` | Config SMTP singleton (id=1, senha criptografada AES-256-CBC) |
+| `sectors` / `user_setores` | Setores e vinculo N:N com usuarios |
+| `user_empresas` | Vinculo usuario-empresas |
+| `roles` / `role_permissions` | Perfis e permissoes por modulo (recurso/acao/company_group_id) |
+| `user_permissions` | Permissoes avulsas por usuario (cache no sync) |
+| `company_groups` / `company_group_members` / `user_grupo_empresas` | Grupos de empresas (filtro do Dashboard e permissoes) |
+| `audit_log` | Auditoria de acoes |
+| `sync_log` | Log de operacoes de sync |
 
-### 7.4 Mapa de Entidades (Server → Frontend)
-
-| Server Column | Frontend Field |
-|--------------|---------------|
-| numero | numero |
-| fornecedor | parte |
-| cnpj | doc |
-| valor_total | valor |
-| empresa_id | empresaId |
-| tem_parcelas | temParcelas |
-| active | active |
-| data_emissao | dataEmissao |
-| data_validade | dataValidade |
+### 4.2 Soft Delete
+- Com `deleted_at`: payments, additives, certidoes, certificados digitais, destinatarios, **licitacoes (campo existe, mas a API de DELETE da licitacao faz exclusao definitiva)**
+- Com `active=0`: contracts, companies, sectors, users, company_groups, tipos_certidao
 
 ---
 
-## 8. DEPLOY
+## 5. API ENDPOINTS
 
-### 8.1 Variaveis de Ambiente (Vercel)
-Configurar via CLI:
+### 5.1 Autenticacao
+| Rota | Metodo | Auth | CSRF | Descricao |
+|------|--------|------|------|-----------|
+| `/api/csrf-token` | GET | Nao | Nao | Token CSRF |
+| `/api/login` | POST | Nao | Nao | Login → JWT cookie |
+| `/api/logout` | POST | Sim | Nao | Limpa sessao |
+| `/api/me` | GET | Sim | Nao | Usuario logado |
+| `/api/forgot-password` | POST | Nao | Nao | Reset via email (rate limit 3/min) |
+| `/api/reset-password` | POST | Nao | Nao | Reseta via token |
+| `/api/change-password` | POST | Sim | Sim | Altera senha propria |
+
+### 5.2 CRUD Principal
+| Rota | Metodo | Auth | CSRF | Descricao |
+|------|--------|------|------|-----------|
+| `/api/certidoes` | GET/POST | Sim | POST | Lista / cria certidao |
+| `/api/certidoes/:id` | PUT/DELETE | Sim | Sim | PUT: atualiza e faz **soft delete** (envia `deleted_at`) — uso padrao da tela; DELETE: exclusao definitiva |
+| `/api/licitacoes` | GET/POST | Sim | POST | Lista / cria licitacao |
+| `/api/licitacoes/:id` | PUT/DELETE | Sim | Sim | Atualiza (status, arquivos) / **exclusao definitiva** |
+| `/api/certificados-digitais` | GET/POST/PUT/DELETE | Sim | Sim | CRUD (DELETE = soft delete com `deleted_at`) |
+| `/api/contracts` | GET/POST/PUT/DELETE | Sim | Sim | CRUD contratos (legado/alertas) |
+| `/api/payments` | GET/POST/PUT/DELETE | Sim | Sim | CRUD pagamentos (legado/alertas) |
+| `/api/additives` | POST/PUT/DELETE | Sim | Sim | CRUD aditivos |
+| `/api/companies` | GET/POST/PUT/DELETE | Varied | Sim | Empresas |
+| `/api/sectors`, `/api/tipos-certidao` | CRUD | Sim | Sim | Cadastros auxiliares |
+| `/api/users`, `/api/user-setores`, `/api/user-empresas`, `/api/user-grupo-empresas` | CRUD | Admin | Sim | Usuarios e vinculos |
+| `/api/user-role`, `/api/user-permissions`, `/api/user-permissions-copy` | POST (+GET) | Admin | Sim | Perfil e permissoes por usuario |
+| `/api/roles`, `/api/role-permissions`, `/api/role-permissions-copy` | CRUD | Admin | Sim | Perfis e permissoes por modulo |
+| `/api/company-groups`, `/api/company-group-members` | CRUD | Sim | Sim | Grupos de empresas |
+| `/api/destinatarios` | GET/POST/DELETE | Sim | Sim | Destinatarios de alertas (DELETE = soft delete) |
+
+### 5.3 Sync
+| Rota | Metodo | Auth | CSRF | Descricao |
+|------|--------|------|------|-----------|
+| `/api/sync` | GET | Sim | Nao | Pull (full ou incremental `?since=`) |
+| `/api/sync` | POST | Sim | Sim | Push (upsert com resolucao por updated_at) |
+
+> O push so e executado pelo cliente se `SYNC_ENABLED = true`.
+
+### 5.4 E-mail e Alertas
+| Rota | Metodo | Auth | CSRF | Descricao |
+|------|--------|------|------|-----------|
+| `/api/config-email` | GET/POST | Sim | Sim | Config SMTP |
+| `/api/enviar-alertas-contratos` | POST | Sim | Sim | Envio manual de alertas de contratos |
+| `/api/enviar-alertas-certidoes` | POST | Sim | Sim | Envio manual de alertas de certidoes |
+| `/api/enviar-alertas-licitacoes` | POST | Sim | Sim | Envio manual de alertas de licitacoes |
+| `/api/enviar-alertas-certificados-digitais` | POST | Sim | Sim | Envio manual de certificados digitais |
+| `/api/enviar-lembrete` / `/api/enviar-lembrete-pagamentos` | POST | Sim | Sim | Lembrete de pagamentos (legado) |
+| `/api/email-diario` | GET | Nao | Nao | **Cron: envio AUTOMATICO diario as 08:30 BRT (11:30 UTC)** |
+
+### 5.5 Outros
+| Rota | Metodo | Auth | CSRF | Descricao |
+|------|--------|------|------|-----------|
+| `/api/cidades` | GET | Nao | Nao | Cidades por UF (le `api/cidades.json`) |
+| `/api/upload-file` | POST | Sim | Sim | Upload base64 |
+| `/api/assistente` | POST | Nao | Nao | Assistente virtual (Gemini + fallback offline) |
+| `/api/admin-reset` | POST | Nao | Nao | Reset de usuarios (emergencia) |
+
+---
+
+## 6. E-MAIL AUTOMATICO (08:30)
+
+### 6.1 Como funciona
+- **Script:** `api/email-diario.js` (handler serverless independente, 484 linhas)
+- **Horario:** todo dia as **08:30 (America/Sao_Paulo, UTC-3)** = 11:30 UTC
+- **Conteudo:** para cada destinatario (Configuracao > Destinatarios), envia e-mail somente quando ha algo para alertar:
+  - **Pagamentos** vencidos / hoje / amanha (tabela `payments`)
+  - **Contratos** vencidos e vencendo em 31-35, 16-30, 15 e <=14 dias
+  - **Certidoes** vencidas e vencendo (mesmas faixas)
+  - **Contrato Licitacoes** vencidas e vencendo (mesmas faixas)
+  - **Certificados Digitais** vencidos e vencendo (ate 30 dias)
+- Cada destinatario recebe apenas os tipos marcados em "Receber Alertas de" (contratos, certidoes, certificados_digitais, licitacoes) e apenas das empresas vinculadas
+
+### 6.2 Execucao local
+- O `server.js` agenda o envio ao iniciar (`agendarEmailDiario()`, chamada em `server.listen`)
+- Horario fixo no codigo: `EMAIL_DIARIO_HORA = 8`, `EMAIL_DIARIO_MINUTO = 30`
+- Exibe no console: `[EMAIL AUTO] Proximo envio automatico: ...`
+- **Requer servidor aberto** no horario; se o servidor iniciar depois das 08:30, agenda para o dia seguinte
+
+### 6.3 Execucao na Vercel
+- `vercel.json` define `crons: [{ path: "/api/email-diario", schedule: "30 11 * * *" }]`
+- Rota especifica `/api/email-diario` → `api/email-diario.js` (antes do catch-all `/api/(.*)`)
+- Requer **deploy** para valer
+
+---
+
+## 7. EXPORTACAO DE RELATORIOS (EXCEL / PDF)
+
+- **Botoes discretos** ("Excel" e "PDF", classe `btn-export`) em: Dashboard, Certidoes, Contrato Licitacoes e Certificados Digitais
+- **Excel:** baixa `.csv` com BOM UTF-8 e separador `;` (abre direto no Excel pt-BR)
+- **PDF:** abre janela com relatorio formatado (titulo, data, filtros) e aciona a impressao → escolher **"Salvar como PDF"**
+- Ambos **respeitam os filtros aplicados na tela**
+- Dashboard: inclui secao Resumo (indicadores), alertas de certidoes, lista de licitacoes e os **3 graficos** (imagens) no PDF
+- Funcoes: `exportarCertidoes()`, `exportarLicitacoes()`, `exportarCertificadosDigitais()`, `exportarDashboard()` + helpers `_exportarExcel()` / `_exportarPdf()` / `_exportarNomeArquivo()`
+
+---
+
+## 8. FLUXO DE SINCRONIZACAO (SYNC)
+
+### 8.0 Modo atual: MANUAL (`SYNC_ENABLED = false`)
+- **Pull:** `loadFromServer()` roda ao entrar nas abas (Certidoes, Licitacoes, Certificados Digitais) e pelo botao **Atualizar** (`atualizarComFeedback`)
+- **Gravacao:** CRUD chama `apiCall(method, path, payload)` direto na API e atualiza o cache local — nao ha push em lote
+- **Desativados:** polling de 300s, retry de 30s, Supabase Realtime e `syncToServer()` automatico
+- Para reativar: `const SYNC_ENABLED = true` (index.html, linha ~7234)
+
+### 8.1 Pull (loadFromServer)
+```
+GET /api/sync → tabelas do Supabase → mapping snake_case→camelCase
+→ substitui os caches (cachedCertidoes, cachedLicitacoes, ...) → IndexedDB → render
+```
+O cache e SUBSTITUIDO completamente (registros deletados em outra maquina somem).
+
+### 8.2 Push (syncToServer) — somente com SYNC_ENABLED=true
+```
+POST /api/sync com todos os registros do cache
+→ servidor compara updated_at: mais recente vence; deletado vira soft delete
+→ payload > 3.5MB: remove arquivos base64 progressivamente
+```
+
+### 8.3 Protecoes
+- Mutex flags `_syncRunning` / `_saveSyncRunning` evitam concorrencia
+- Certidoes/licitacoes com `deleted_at` no servidor nao sao "des-deletadas" pelo cliente
+- Cooldown de 30s pos-sync (`SYNC_COOLDOWN_MS`) e debounce de 30s no realtime
+
+---
+
+## 9. SEGURANCA
+
+- JWT em cookie HttpOnly; timeout de sessao (8h default)
+- CSRF obrigatorio em escritas (header `X-CSRF-Token` / body `csrf_token`)
+- Rate limit de login (10/min por IP) e de forgot-password (3/min)
+- Perfis: admin (total), setor_admin (restrito aos seus setores), usuario (basico)
+- Permissoes por modulo via `roles`/`role_permissions` (recurso + acao + company_group_id), cobradas no backend e espelhadas no menu
+- Exclusoes normalmente exigem admin; menu/botoes se ajustam por permissao
+- Senha de certificado digital guardada para consulta (botao "Senha"/"Copiar")
+- Senha SMTP criptografada com AES-256-CBC (chave derivada de JWT_SECRET)
+
+---
+
+## 10. DEPLOY
+
+### 10.1 Variaveis (Vercel)
 ```bash
 echo "valor" | vercel env add SUPABASE_URL production
 echo "valor" | vercel env add SUPABASE_SERVICE_ROLE_KEY production
 echo "valor" | vercel env add JWT_SECRET production
 echo "valor" | vercel env add ADMIN_PASSWORD production
+echo "valor" | vercel env add GEMINI_API_KEY production
 ```
 
-**IMPORTANTE:** Ao usar `echo "valor" | vercel env add`, enviar APENAS o valor, sem labels.
-
-### 8.2 Deploy
+### 10.2 Deploy
 ```bash
 vercel --prod --yes
 ```
 
-### 8.3 Cron Jobs
-- `/api/email-diario`: Executa diariamente as 13:00 UTC (10:00 BRT)
-- Envia alertas de vencimento para destinatarios cadastrados
+### 10.3 Cron Jobs
+| Rota | Schedule | Horario BRT | Conteudo |
+|------|----------|-------------|----------|
+| `/api/email-diario` | `30 11 * * *` | 08:30 | Alertas de pagamentos, contratos, certidoes, licitacoes e certificados digitais |
 
-### 8.4 Limitacoes Vercel Hobby
-- Funcoes serverless: 10s timeout
-- 1024MB memoria
-- 100GB bandwidth/mes
+### 10.4 Execucao local
+```bash
+npm run dev   # node server.js (porta do .env, ex: 5000; default 3001)
+```
+O servidor local serve o front, delega /api/* para `api/index.js` e agenda o e-mail diario.
 
----
-
-## 9. PROBLEMAS CONHECIDOS E SOLUCOES
-
-### 9.1 Certidao reaparece em outra maquina
-**Causa:** `mergeDelta()` nao removia registros ausentes do delta do servidor.
-**Solucao:** `loadFromServer()` substitui cache inteiro ao inves de fazer merge.
-
-### 9.2 Exclusao nao persiste apos reload
-**Causa:** PUT `/api/certidoes/:id` nao aceitava `deleted_at` no body.
-**Solucao:** Adicionado `if (body.deleted_at !== undefined) upd.deleted_at = body.deleted_at || null`
-
-### 9.3 Sync recria registros deletados
-**Causa:** Sync POST fazia hard DELETE no servidor; outro usuario recriava com dados stale.
-**Solucao:** Sync POST agora usa soft delete (seta `deleted_at`) ao inves de hard DELETE.
-
-### 9.4 Sistema volta ao login automaticamente
-**Causa:** Cookie HttpOnly expirando ou `sessionStorage` inconsistente.
-**Solucao:** Verificar `SESSION_TIMEOUT_HOURS` e consistencia do `sessionStorage.logged_in`.
-
-### 9.5 Supabase excede cota de egress
-**Causa:** Sync enviando TODOS os registros a cada poucos segundos × multiplos usuarios.
-**Solucao:** Upgrade do plano Supabase OU migrar para self-hosted.
+### 10.5 Limitacoes Vercel Hobby
+- 10s timeout por funcao; 1024MB RAM; 100GB bandwidth/mes
 
 ---
 
-## 10. ENDPOINTS DE EMERGENCIA
+## 11. PROBLEMAS CONHECIDOS E SOLUCOES
 
-### Reset de senha via API
+| Problema | Causa / Solucao |
+|----------|-----------------|
+| Alteracao nao aparece em outra maquina | Sync automatico esta desligado (`SYNC_ENABLED=false`); use o botao "Atualizar" da tela |
+| Certidao reaparece em outra maquina | Cache agora e substituido integralmente no pull (nao usa merge) |
+| Exclusao nao persiste apos reload | PUT de certidoes/licitacoes/certificados aceita `deleted_at` (soft delete) |
+| Exclusao de licitacao some para sempre | DELETE de licitacoes e definitivo (hard delete) por definicao |
+| Sync recria registros deletados | Sync POST usa soft delete ao inves de hard DELETE |
+| E-mail automatico nao dispara | Verificar: servidor local aberto (local) ou cron + deploy (Vercel); config SMTP e destinatarios cadastrados |
+| Botao Ver nao mostra certidao federal | Certidao federal vencida e de outra filial: federais ignoram CNPJ e aparecem mesmo vencidas |
+| Select ilegivel no modo escuro | Nao usar `background:#fff` inline em inputs/selects (herda o tema) |
+| Exportacao PDF nao abre | Navegador bloqueou janela (pop-up); permitir pop-ups do site |
+| Supabase excede cota de egress | Upgrade de plano ou reduzir frequencia do sync |
+| Alertas falham na Vercel | Payload com anexos base64 excedia limite — funcao monta HTML leve (corrigido) |
+
+---
+
+## 12. ENDPOINTS DE EMERGENCIA
+
 ```bash
 # Listar usuarios
 curl -X POST https://controle-de-contratos-omega.vercel.app/api/admin-reset \
-  -H "Content-Type: application/json" \
-  -d '{"username":"list"}'
+  -H "Content-Type: application/json" -d '{"username":"list"}'
 
 # Resetar senha do admin
 curl -X POST https://controle-de-contratos-omega.vercel.app/api/admin-reset \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","new_password":"NovaSenh@123"}'
+  -H "Content-Type: application/json" -d '{"username":"admin","new_password":"NovaSenh@123"}'
+
+# Testar envio do e-mail diario manualmente
+curl https://controle-de-contratos-omega.vercel.app/api/email-diario
 ```
 
-### Verificar status do Supabase
-```bash
-# Via Vercel CLI
-vercel logs --limit 10
-# Procurar por: "exceed_egress_quota" ou "Service restricted"
-```
+---
+
+## 13. ARQUIVOS DO PROJETO
+
+| Arquivo | Descricao |
+|---------|-----------|
+| `index.html` | SPA completa (HTML + CSS + JS, 7319 linhas) |
+| `api/index.js` | API REST + sync + assistente (3215 linhas) |
+| `api/email-diario.js` | Envio diario automatico de alertas (484 linhas) |
+| `api/cidades.json` | Base de cidades/UFs |
+| `server.js` | Servidor local (estaticos + /api + agendamento 08:30) |
+| `vercel.json` | Builds, rotas e cron da Vercel |
+| `supabase/` | Scripts de migracao (`npm run migrate`) |
+| `criar_tabelas_supabase*.sql` | DDL das tabelas |
+| `_verify.cjs` | Script de verificacao das tabelas via API do Supabase |
+| `README.md` | Visao geral, setup e deploy |

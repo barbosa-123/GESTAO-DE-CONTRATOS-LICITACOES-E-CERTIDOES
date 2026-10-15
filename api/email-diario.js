@@ -51,6 +51,21 @@ async function getContratos() {
   return data || []
 }
 
+async function getCertidoes() {
+  const { data } = await getSupabase().from('certidoes').select('*').is('deleted_at', null)
+  return data || []
+}
+
+async function getLicitacoes() {
+  const { data } = await getSupabase().from('licitacoes').select('*').is('deleted_at', null)
+  return data || []
+}
+
+async function getCertificadosDigitais() {
+  const { data } = await getSupabase().from('certificados_digitais').select('*').is('deleted_at', null)
+  return data || []
+}
+
 async function getPayments() {
   const { data } = await getSupabase().from('payments').select('*').is('deleted_at', null)
   return data || []
@@ -178,6 +193,146 @@ function montarHtmlContratosAVencer(grupos, titulo = '') {
   return partes
 }
 
+const SECOES_VENC = [
+  ['d35', 'ENTRE 31 E 35 DIAS', '#24527a', '#eef6ff'],
+  ['d30', 'ENTRE 16 E 30 DIAS', '#d4820a', '#fff3cd'],
+  ['d15', 'FALTAM 15 DIAS', '#c0392b', '#ffe1e1'],
+  ['d0_14', 'MENOS DE 15 DIAS', '#b71c1c', '#ffd7d7'],
+]
+
+function processarCertidoesDiario(certidoes, hoje, empresaNomes) {
+  const vencidas = []
+  const grupos = { d35: [], d30: [], d15: [], d0_14: [] }
+  for (const ct of certidoes) {
+    const fv = (ct.data_validade || '').slice(0, 10)
+    const df = new Date(fv)
+    if (isNaN(df)) continue
+    const info = {
+      tipo: ct.tipo || '—', empresa: empresaNomes[ct.empresa_id] || '—',
+      cnpj: ct.cnpj || '—', uf: ct.uf || '—', cidade: ct.cidade || '—', validade: datefmt(fv)
+    }
+    const diffVenc = Math.floor((hoje - df) / 86400000)
+    if (diffVenc > 0) { vencidas.push({ ...info, dias: diffVenc }); continue }
+    const diff = Math.floor((df - hoje) / 86400000)
+    if (diff >= 31 && diff <= 35) grupos.d35.push({ ...info, dias: diff })
+    else if (diff >= 16 && diff <= 30) grupos.d30.push({ ...info, dias: diff })
+    else if (diff === 15) grupos.d15.push({ ...info, dias: diff })
+    else if (diff >= 0 && diff <= 14) grupos.d0_14.push({ ...info, dias: diff })
+  }
+  return { vencidas, grupos }
+}
+
+function montarHtmlCertidoesDiario(vencidas, grupos) {
+  const partes = []
+  if (vencidas.length) {
+    partes.push(`<div style="background:#f8d7da;border-left:4px solid #c0392b;padding:12px 16px;border-radius:0 6px 6px 0;margin-bottom:16px">
+      <h3 style="color:#721c24;margin:0 0 8px">Certidões Vencidas</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+        <tr style="background:#f5f5f5"><th style="padding:6px;text-align:left">Tipo</th><th>Empresa</th><th>CNPJ</th><th>UF</th><th>Cidade</th><th>Validade</th><th>Dias</th></tr>
+        ${vencidas.map(v => `<tr><td style="padding:6px">${v.tipo}</td><td>${v.empresa}</td><td>${v.cnpj}</td><td>${v.uf}</td><td>${v.cidade}</td><td>${v.validade}</td><td style="color:red;font-weight:bold">${v.dias}d</td></tr>`).join('')}
+      </table>
+    </div>`)
+  }
+  for (const [chave, titulo, cor, bg] of SECOES_VENC) {
+    const lista = grupos[chave]
+    if (!lista.length) continue
+    partes.push(`<div style="background:${bg};border-left:4px solid ${cor};padding:12px 16px;border-radius:0 6px 6px 0;margin-bottom:16px">
+      <h3 style="color:${cor};margin:0 0 8px">Certidões — ${titulo}</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+        <tr style="background:#f5f5f5"><th style="padding:6px;text-align:left">Tipo</th><th>Empresa</th><th>CNPJ</th><th>UF</th><th>Cidade</th><th>Validade</th><th>Dias</th></tr>
+        ${lista.map(v => `<tr><td style="padding:6px">${v.tipo}</td><td>${v.empresa}</td><td>${v.cnpj}</td><td>${v.uf}</td><td>${v.cidade}</td><td>${v.validade}</td><td>${v.dias}d</td></tr>`).join('')}
+      </table>
+    </div>`)
+  }
+  return partes
+}
+
+function processarLicitacoesDiario(licitacoes, hoje, empresaNomes) {
+  const vencidas = []
+  const grupos = { d35: [], d30: [], d15: [], d0_14: [] }
+  for (const lc of licitacoes) {
+    const fv = (lc.data_fim || '').slice(0, 10)
+    const df = new Date(fv)
+    if (isNaN(df)) continue
+    const info = {
+      numero: lc.numero_licitacao || '—', objeto: lc.objeto || '—',
+      empresa: empresaNomes[lc.empresa_id] || '—', dataFim: datefmt(fv)
+    }
+    const diffVenc = Math.floor((hoje - df) / 86400000)
+    if (diffVenc > 0) { vencidas.push({ ...info, dias: diffVenc }); continue }
+    const diff = Math.floor((df - hoje) / 86400000)
+    if (diff >= 31 && diff <= 35) grupos.d35.push({ ...info, dias: diff })
+    else if (diff >= 16 && diff <= 30) grupos.d30.push({ ...info, dias: diff })
+    else if (diff === 15) grupos.d15.push({ ...info, dias: diff })
+    else if (diff >= 0 && diff <= 14) grupos.d0_14.push({ ...info, dias: diff })
+  }
+  return { vencidas, grupos }
+}
+
+function montarHtmlLicitacoesDiario(vencidas, grupos) {
+  const partes = []
+  if (vencidas.length) {
+    partes.push(`<div style="background:#f8d7da;border-left:4px solid #c0392b;padding:12px 16px;border-radius:0 6px 6px 0;margin-bottom:16px">
+      <h3 style="color:#721c24;margin:0 0 8px">Contrato Licitações Vencidas</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+        <tr style="background:#f5f5f5"><th style="padding:6px;text-align:left">Nº Licitação</th><th>Objeto</th><th>Empresa</th><th>Data Fim</th><th>Dias</th></tr>
+        ${vencidas.map(v => `<tr><td style="padding:6px">${v.numero}</td><td>${v.objeto}</td><td>${v.empresa}</td><td>${v.dataFim}</td><td style="color:red;font-weight:bold">${v.dias}d</td></tr>`).join('')}
+      </table>
+    </div>`)
+  }
+  for (const [chave, titulo, cor, bg] of SECOES_VENC) {
+    const lista = grupos[chave]
+    if (!lista.length) continue
+    partes.push(`<div style="background:${bg};border-left:4px solid ${cor};padding:12px 16px;border-radius:0 6px 6px 0;margin-bottom:16px">
+      <h3 style="color:${cor};margin:0 0 8px">Contrato Licitações — ${titulo}</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+        <tr style="background:#f5f5f5"><th style="padding:6px;text-align:left">Nº Licitação</th><th>Objeto</th><th>Empresa</th><th>Data Fim</th><th>Dias</th></tr>
+        ${lista.map(v => `<tr><td style="padding:6px">${v.numero}</td><td>${v.objeto}</td><td>${v.empresa}</td><td>${v.dataFim}</td><td>${v.dias}d</td></tr>`).join('')}
+      </table>
+    </div>`)
+  }
+  return partes
+}
+
+function processarCertificadosDigitaisDiario(certs, hoje, empresaNomes) {
+  const vencidos = [], vencendo = []
+  for (const c of certs) {
+    if (!c.data_vencimento) continue
+    const fv = (c.data_vencimento || '').slice(0, 10)
+    const df = new Date(fv + 'T00:00:00')
+    if (isNaN(df)) continue
+    const info = { empresa: empresaNomes[c.empresa_id] || '—', cnpj: c.cnpj || '—', vencimento: datefmt(fv) }
+    const diffVenc = Math.floor((hoje - df) / 86400000)
+    if (diffVenc > 0) { vencidos.push({ ...info, dias: diffVenc }); continue }
+    const dias = Math.ceil((df - hoje) / 86400000)
+    if (dias <= 30) vencendo.push({ ...info, dias })
+  }
+  return { vencidos, vencendo }
+}
+
+function montarHtmlCertificadosDigitaisDiario(vencidos, vencendo) {
+  const partes = []
+  if (vencidos.length) {
+    partes.push(`<div style="background:#f8d7da;border-left:4px solid #c0392b;padding:12px 16px;border-radius:0 6px 6px 0;margin-bottom:16px">
+      <h3 style="color:#721c24;margin:0 0 8px">Certificados Digitais Vencidos</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+        <tr style="background:#f5f5f5"><th style="padding:6px;text-align:left">Empresa</th><th>CNPJ/CPF</th><th>Vencimento</th><th>Dias</th></tr>
+        ${vencidos.map(v => `<tr><td style="padding:6px">${v.empresa}</td><td>${v.cnpj}</td><td>${v.vencimento}</td><td style="color:red;font-weight:bold">${v.dias}d</td></tr>`).join('')}
+      </table>
+    </div>`)
+  }
+  if (vencendo.length) {
+    partes.push(`<div style="background:#fff3cd;border-left:4px solid #d4820a;padding:12px 16px;border-radius:0 6px 6px 0;margin-bottom:16px">
+      <h3 style="color:#856404;margin:0 0 8px">Certificados Digitais Vencendo (até 30 dias)</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+        <tr style="background:#f5f5f5"><th style="padding:6px;text-align:left">Empresa</th><th>CNPJ/CPF</th><th>Vencimento</th><th>Dias</th></tr>
+        ${vencendo.map(v => `<tr><td style="padding:6px">${v.empresa}</td><td>${v.cnpj}</td><td>${v.vencimento}</td><td>${v.dias}d</td></tr>`).join('')}
+      </table>
+    </div>`)
+  }
+  return partes
+}
+
 async function enviarEmail(cfg, html, assunto, destinatario) {
   const transporter = nodemailer.createTransport({
     host: cfg.smtp_server || 'smtp.gmail.com',
@@ -207,6 +362,9 @@ export default async function handler(req) {
     const contratos = await getContratos()
     const pagamentos = await getPayments()
     const empresas = await getEmpresas()
+    const certidoes = await getCertidoes()
+    const licitacoes = await getLicitacoes()
+    const certificadosDigitais = await getCertificadosDigitais()
     const empresaNomes = {}
     empresas.forEach(e => { if (e.id && e.nome) empresaNomes[e.id] = e.nome })
     const hoje = new Date()
@@ -263,6 +421,54 @@ export default async function handler(req) {
             await enviarEmail(cfg, html, `Alerta de Contratos${rotulo} - ${hoje.toLocaleDateString('pt-BR')}`, email)
             enviados++
           } catch (e) { erros.push(`Contratos ${email}: ${e.message}`) }
+        }
+      }
+
+      if (!alertas.length || alertas.includes('certidoes')) {
+        const empCertidoes = certidoes.filter(ct => empIdsSet === null || empIdsSet.has(ct.empresa_id))
+        const { vencidas, grupos } = processarCertidoesDiario(empCertidoes, hoje, empresaNomes)
+        if (vencidas.length || Object.values(grupos).some(g => g.length)) {
+          const rotulo = dest.nome ? ` - ${dest.nome}` : ''
+          const partes = montarHtmlCertidoesDiario(vencidas, grupos)
+          const html = `<html><body style="font-family:Arial,sans-serif;padding:20px">
+            ${partes.join('')}
+            <p style="color:#666;font-size:12px">Gerado automaticamente em ${new Date().toLocaleString('pt-BR')}</p></body></html>`
+          try {
+            await enviarEmail(cfg, html, `Alerta de Certidões${rotulo} - ${hoje.toLocaleDateString('pt-BR')}`, email)
+            enviados++
+          } catch (e) { erros.push(`Certidões ${email}: ${e.message}`) }
+        }
+      }
+
+      if (!alertas.length || alertas.includes('licitacoes')) {
+        const empLicitacoes = licitacoes.filter(lc => empIdsSet === null || empIdsSet.has(lc.empresa_id))
+        const { vencidas, grupos } = processarLicitacoesDiario(empLicitacoes, hoje, empresaNomes)
+        if (vencidas.length || Object.values(grupos).some(g => g.length)) {
+          const rotulo = dest.nome ? ` - ${dest.nome}` : ''
+          const partes = montarHtmlLicitacoesDiario(vencidas, grupos)
+          const html = `<html><body style="font-family:Arial,sans-serif;padding:20px">
+            ${partes.join('')}
+            <p style="color:#666;font-size:12px">Gerado automaticamente em ${new Date().toLocaleString('pt-BR')}</p></body></html>`
+          try {
+            await enviarEmail(cfg, html, `Alerta de Contrato Licitações${rotulo} - ${hoje.toLocaleDateString('pt-BR')}`, email)
+            enviados++
+          } catch (e) { erros.push(`Licitações ${email}: ${e.message}`) }
+        }
+      }
+
+      if (!alertas.length || alertas.includes('certificados_digitais')) {
+        const empCertDig = certificadosDigitais.filter(cd => empIdsSet === null || empIdsSet.has(cd.empresa_id))
+        const { vencidos, vencendo } = processarCertificadosDigitaisDiario(empCertDig, hoje, empresaNomes)
+        if (vencidos.length || vencendo.length) {
+          const rotulo = dest.nome ? ` - ${dest.nome}` : ''
+          const partes = montarHtmlCertificadosDigitaisDiario(vencidos, vencendo)
+          const html = `<html><body style="font-family:Arial,sans-serif;padding:20px">
+            ${partes.join('')}
+            <p style="color:#666;font-size:12px">Gerado automaticamente em ${new Date().toLocaleString('pt-BR')}</p></body></html>`
+          try {
+            await enviarEmail(cfg, html, `Alerta de Certificados Digitais${rotulo} - ${hoje.toLocaleDateString('pt-BR')}`, email)
+            enviados++
+          } catch (e) { erros.push(`Certificados Digitais ${email}: ${e.message}`) }
         }
       }
     }

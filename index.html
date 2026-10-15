@@ -191,6 +191,10 @@
     .btn-warning { background: #d4820a; color: white; }
     .btn-danger  { background: #c0392b; color: white; }
     .btn-sm { padding: 5px 12px; font-size: 0.8rem; }
+    .btn-export { padding: 5px 10px; font-size: 0.72rem; font-weight: 500; background: #eef2f6; color: #5a6b7c; }
+    .btn-export:hover { background: #dfe6ee; opacity: 1; }
+    [data-theme="dark"] .btn-export { background: #2a2f36; color: #9aa7b5; }
+    [data-theme="dark"] .btn-export:hover { background: #353b44; }
     .btn-row { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
 
     table {
@@ -907,9 +911,13 @@
     <div class="card" style="padding:12px 16px;margin-bottom:16px;">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
         <label style="margin:0;font-weight:600;font-size:0.85rem;white-space:nowrap;">Grupo de Empresas:</label>
-        <select id="dash-filtro-grupo" onchange="onDashGrupoChange()" style="padding:6px 10px;border:1px solid #ccd6e0;border-radius:6px;font-size:0.85rem;min-width:220px;background:#fff;">
+        <select id="dash-filtro-grupo" onchange="onDashGrupoChange()" style="padding:6px 10px;border:1px solid #ccd6e0;border-radius:6px;font-size:0.85rem;min-width:220px;">
           <option value="">Todas as empresas</option>
         </select>
+        <div style="margin-left:auto;display:flex;gap:8px;">
+          <button class="btn btn-export" onclick="exportarDashboard('excel')" title="Exportar relatório do dashboard em Excel (CSV)">⬇ Excel</button>
+          <button class="btn btn-export" onclick="exportarDashboard('pdf')" title="Gerar relatório do dashboard em PDF (impressão)">📄 PDF</button>
+        </div>
       </div>
     </div>
     <div class="summary-cards" id="summary-cards"></div>
@@ -937,6 +945,8 @@
         <div style="display:flex;gap:8px;">
           <button class="btn btn-primary" onclick="abrirModalCertidao()">+ Nova Certidão</button>
           <button class="btn" id="btn-atualizar-certidoes" onclick="atualizarComFeedback(this, () => loadFromServer().then(() => renderCertidoes()))" title="Atualizar do servidor">🔄 Atualizar</button>
+          <button class="btn btn-export" onclick="exportarCertidoes('excel')" title="Exportar certidões (com filtros) em Excel (CSV)">⬇ Excel</button>
+          <button class="btn btn-export" onclick="exportarCertidoes('pdf')" title="Gerar relatório das certidões (com filtros) em PDF">📄 PDF</button>
         </div>
       </div>
       <div style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; align-items:flex-end;">
@@ -991,6 +1001,8 @@
         <div style="display:flex;gap:8px;">
           <button class="btn btn-primary" onclick="abrirModalLicitacao()">+ Nova Licitação</button>
           <button class="btn" id="btn-atualizar-licitacoes" onclick="atualizarComFeedback(this, () => loadFromServer().then(() => renderLicitacoes()))" title="Atualizar do servidor">🔄 Atualizar</button>
+          <button class="btn btn-export" onclick="exportarLicitacoes('excel')" title="Exportar licitações (com filtros) em Excel (CSV)">⬇ Excel</button>
+          <button class="btn btn-export" onclick="exportarLicitacoes('pdf')" title="Gerar relatório das licitações (com filtros) em PDF">📄 PDF</button>
         </div>
       </div>
       <div style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; align-items:flex-end;">
@@ -1036,6 +1048,8 @@
         <div style="display:flex;gap:8px;">
           <button class="btn btn-primary" onclick="abrirModalCertificado()">+ Novo Certificado</button>
           <button class="btn" id="btn-atualizar-certificados-pg" onclick="atualizarComFeedback(this, () => loadFromServer().then(() => renderPgCertificadosDigitais()))" title="Atualizar do servidor">🔄 Atualizar</button>
+          <button class="btn btn-export" onclick="exportarCertificadosDigitais('excel')" title="Exportar certificados digitais (com filtros) em Excel (CSV)">⬇ Excel</button>
+          <button class="btn btn-export" onclick="exportarCertificadosDigitais('pdf')" title="Gerar relatório dos certificados digitais (com filtros) em PDF">📄 PDF</button>
         </div>
       </div>
       <div style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; align-items:flex-end;">
@@ -1897,7 +1911,7 @@
 
 <!-- MODAL: DETALHE DO CONTRATO -->
 <div class="modal-overlay" id="modal-detalhe">
-  <div class="modal">
+  <div class="modal" style="max-width:960px;">
     <button class="modal-close" onclick="fecharModal('modal-detalhe')">×</button>
     <h3>Detalhe do Contrato</h3>
     <div id="detalhe-content"></div>
@@ -2102,7 +2116,9 @@
       <button class="chat-sug-btn" onclick="enviarPergunta('Como gerenciar usuarios e permissoes?')">Usuarios e permissoes</button>
       <button class="chat-sug-btn" onclick="enviarPergunta('Como configurar alertas por e-mail?')">Alertas por e-mail</button>
       <button class="chat-sug-btn" onclick="enviarPergunta('O que mostra o Dashboard?')">Dashboard</button>
-      <button class="chat-sug-btn" onclick="enviarPergunta('Como exportar para Excel?')">Exportar Excel</button>
+      <button class="chat-sug-btn" onclick="enviarPergunta('Como exportar para Excel e PDF?')">Exportar Excel/PDF</button>
+      <button class="chat-sug-btn" onclick="enviarPergunta('O que mostra o resumo da licitação?')">Resumo da licitação</button>
+      <button class="chat-sug-btn" onclick="enviarPergunta('Como funciona o envio automático de e-mails?')">Envio automático e-mails</button>
       <button class="chat-sug-btn" onclick="enviarPergunta('Como alterar minha senha?')">Alterar senha</button>
       <button class="chat-sug-btn" style="background:#24527a;color:white;border-color:#24527a;" onclick="voltarInicio()">Voltar ao inicio</button>
     </div>
@@ -3626,7 +3642,7 @@ function renderDestinatariosConfig() {
     return `<tr>
       <td>${d.email}</td>
       <td>${d.nome || '—'}</td>
-      <td style="font-size:0.8rem;color:${alertas.length ? '#1a3c5e' : '#888'};">${alertasTxt}</td>
+      <td style="font-size:0.8rem;">${alertasTxt}</td>
       <td style="font-size:0.82rem;">${nomes}</td>
       <td style="font-size:0.82rem;">${setoresNomes}</td>
       <td>
@@ -5073,39 +5089,130 @@ function abrirDetalheLicitacao(id) {
   }
   html += `</div>`;
 
-  const certRelacionadas = getCertidoes().filter(c => {
-    if (c.empresaId !== l.empresaId) return false;
-    const st = calcStatusCertidao(c);
-    return st === 'valida' || st === 'vencendo';
+  const normTxt = (s) => (s || '').toString().normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  const normDoc = (s) => (s || '').toString().replace(/\D/g, '');
+  const esferaCertidao = (tipo) => {
+    const t = normTxt(tipo);
+    if (/federal/.test(t)) return 'federal';
+    if (/estadual|bombeiro|avcb|defesa civil/.test(t)) return 'estadual';
+    if (/municipal|alvara|sanitario/.test(t)) return 'municipal';
+    return 'outra';
+  };
+  const esferaLabel = { federal: 'Federal', estadual: 'Estadual', municipal: 'Municipal', outra: '—' };
+  const chaveValidade = (c) => (c.semValidade || c.dataValidade === 'Sem Validade' || !c.dataValidade) ? Infinity : new Date(c.dataValidade).getTime();
+  const chaveEmissao = (c) => c.dataEmissao ? new Date(c.dataEmissao).getTime() : 0;
+
+  const cnpjContrato = normDoc(l.cnpj);
+  const ufContrato = (l.uf || '').toUpperCase();
+  const cidadeContrato = normTxt(l.cidade);
+
+  const candidatas = getCertidoes().filter(c => {
+    const esp = esferaCertidao(c.tipo);
+    const stc = calcStatusCertidao(c);
+    if (esp === 'federal') return stc === 'valida' || stc === 'vencendo' || stc === 'vencida';
+    if (stc !== 'valida' && stc !== 'vencendo') return false;
+    const cnpjCert = normDoc(c.cnpj);
+    const mesmoCnpj = cnpjContrato && cnpjCert && cnpjContrato === cnpjCert;
+    const mesmaEmpresa = !cnpjContrato && l.empresaId && c.empresaId === l.empresaId;
+    if (!mesmoCnpj && !mesmaEmpresa) return false;
+    if (!ufContrato || !c.uf) return true;
+    return (c.uf || '').toUpperCase() === ufContrato;
   });
 
-  if (certRelacionadas.length) {
-    html += `<h4 style="margin:20px 0 8px;color:#1a3c5e;">Certidões Válidas da Empresa</h4>`;
+  const pesoStatus = (c) => (calcStatusCertidao(c) === 'valida' || calcStatusCertidao(c) === 'vencendo') ? 1 : 0;
+  const porTipo = new Map();
+  candidatas.forEach(c => {
+    const chave = c.tipo || 'Sem tipo';
+    const atual = porTipo.get(chave);
+    if (!atual) { porTipo.set(chave, c); return; }
+    const mesmaCidadeC = esferaCertidao(c.tipo) === 'municipal' && cidadeContrato && normTxt(c.cidade) === cidadeContrato ? 1 : 0;
+    const mesmaCidadeA = esferaCertidao(atual.tipo) === 'municipal' && cidadeContrato && normTxt(atual.cidade) === cidadeContrato ? 1 : 0;
+    const psC = pesoStatus(c), psA = pesoStatus(atual);
+    if (psC !== psA) {
+      if (psC > psA) porTipo.set(chave, c);
+    } else if (mesmaCidadeC !== mesmaCidadeA) {
+      if (mesmaCidadeC > mesmaCidadeA) porTipo.set(chave, c);
+    } else if (chaveValidade(c) !== chaveValidade(atual)) {
+      if (chaveValidade(c) > chaveValidade(atual)) porTipo.set(chave, c);
+    } else if (chaveEmissao(c) > chaveEmissao(atual)) {
+      porTipo.set(chave, c);
+    }
+  });
+
+  const ordemEsp = { federal: 0, estadual: 1, municipal: 2, outra: 3 };
+  const ordemLinha = (c) => {
+    const esp = c.esfera || esferaCertidao(c.tipo);
+    return ordemEsp[esp] !== undefined ? ordemEsp[esp] : 3;
+  };
+  const certRelacionadas = [...porTipo.values()].sort((a, b) => {
+    const d = ordemLinha(a) - ordemLinha(b);
+    if (d) return d;
+    return (a.tipo || '').localeCompare(b.tipo || '', 'pt-BR');
+  });
+
+  const temEsp = { federal: false, estadual: false, municipal: false };
+  certRelacionadas.forEach(c => { temEsp[esferaCertidao(c.tipo)] = true; });
+  const linhasObrigatorias = [...certRelacionadas];
+  if (!temEsp.federal) linhasObrigatorias.push({ __faltando: true, tipo: 'Documento Federal (nome contendo "Federal")', esfera: 'federal' });
+  if (ufContrato && !temEsp.estadual) linhasObrigatorias.push({ __faltando: true, tipo: `Certidão Estadual (${ufContrato})`, esfera: 'estadual' });
+  if (ufContrato && !temEsp.municipal) linhasObrigatorias.push({ __faltando: true, tipo: `Certidão Municipal (${ufContrato})`, esfera: 'municipal' });
+  linhasObrigatorias.sort((a, b) => {
+    const d = ordemLinha(a) - ordemLinha(b);
+    if (d) return d;
+    return (a.tipo || '').localeCompare(b.tipo || '', 'pt-BR');
+  });
+
+  const badgeObrigatoria = `<span class="badge" style="background:#eaf2fb;color:#1a3c5e;">Obrigatória</span>`;
+  const badgeFaltando = `<span class="badge" style="background:#fdecea;color:#c0392b;">Não encontrada</span>`;
+
+  if (linhasObrigatorias.length) {
+    html += `<h4 style="margin:20px 0 8px;color:#1a3c5e;">Certidões Obrigatórias da Empresa${ufContrato ? ` — Contrato UF ${escapeHtml(ufContrato)}` : ''} (uma por tipo)</h4>`;
     html += `<div style="overflow-x:auto;"><table style="width:100%;font-size:0.82rem;">
       <thead><tr>
-        <th>Tipo</th><th>UF</th><th>Cidade</th><th>Emissão</th><th>Validade</th><th>Status</th><th>Anexo</th>
+        <th>Tipo / Esfera</th><th>UF</th><th>Cidade</th><th>Emissão</th><th>Validade</th><th>Status / Obrigatória</th><th>Anexo</th>
       </tr></thead><tbody>`;
-    certRelacionadas.forEach(c => {
+    linhasObrigatorias.forEach(c => {
+      const cellEsfera = (esp) => `<div style="font-size:0.7rem;color:#666;margin-top:2px;">${esferaLabel[esp] || '—'}</div>`;
+      if (c.__faltando) {
+        html += `<tr>
+          <td>${escapeHtml(c.tipo)}${cellEsfera(c.esfera)}</td>
+          <td>${(c.esfera === 'federal') ? '—' : (ufContrato || '—')}</td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td>${badgeFaltando}<div style="margin-top:2px;">${badgeObrigatoria}</div></td>
+          <td>—</td>
+        </tr>`;
+        return;
+      }
       const st = calcStatusCertidao(c);
-      const stLabel = { valida: 'Válida', vencendo: 'Vencendo' }[st];
-      const stClass = { valida: 'badge-valida', vencendo: 'badge-pendente' }[st];
+      const stLabel = { valida: 'Válida', vencendo: 'Vencendo', vencida: 'Vencida' }[st];
+      const stClass = { valida: 'badge-valida', vencendo: 'badge-pendente', vencida: 'badge-vencido' }[st];
       const arq = c.arquivo;
       const hasFile = arq && typeof arq === 'object' && !Array.isArray(arq) && arq.data;
-      const arqBtn = hasFile ? `<button class="btn btn-sm btn-primary" onclick="previewCertidaoArquivo('${c.id}')" style="padding:2px 8px;font-size:0.75rem;">Ver</button>` : '—';
+      let anexoCell;
+      if (hasFile) {
+        const nomeArq = escapeHtml(arq.name || 'arquivo');
+        anexoCell = `<button class="btn btn-sm btn-primary" onclick="previewCertidaoArquivo('${c.id}')" style="padding:2px 8px;font-size:0.75rem;white-space:nowrap;">Ver</button> <span style="font-size:0.7rem;color:#666;display:inline-block;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;" title="${nomeArq}">${nomeArq}</span>`;
+      } else if (arq && arq.name) {
+        anexoCell = `<span style="font-size:0.7rem;color:#c00;" title="Arquivo sem dados salvos">⚠ ${escapeHtml(arq.name)}</span>`;
+      } else {
+        anexoCell = '—';
+      }
       html += `<tr>
-        <td>${escapeHtml(c.tipo)}</td>
+        <td>${escapeHtml(c.tipo)}${cellEsfera(esferaCertidao(c.tipo))}</td>
         <td>${c.uf || '—'}</td>
         <td>${c.cidade || '—'}</td>
         <td>${c.dataEmissao ? fmtData(c.dataEmissao) : '—'}</td>
         <td>${(c.semValidade || c.dataValidade === 'Sem Validade' || (!c.dataValidade && c.id)) ? 'Sem Validade' : (c.dataValidade ? fmtData(c.dataValidade) : '—')}</td>
-        <td><span class="badge ${stClass}">${stLabel}</span></td>
-        <td>${arqBtn}</td>
+        <td><span class="badge ${stClass}">${stLabel}</span><div style="margin-top:2px;">${badgeObrigatoria}</div></td>
+        <td>${anexoCell}</td>
       </tr>`;
     });
     html += `</tbody></table></div>`;
   } else {
-    html += `<h4 style="margin:20px 0 8px;color:#1a3c5e;">Certidões Válidas da Empresa</h4>`;
-    html += `<p style="color:#aaa;font-size:0.85rem;">Nenhuma certidão válida encontrada para esta empresa.</p>`;
+    html += `<h4 style="margin:20px 0 8px;color:#1a3c5e;">Certidões Obrigatórias da Empresa</h4>`;
+    html += `<p style="color:#aaa;font-size:0.85rem;">Nenhuma certidão obrigatória encontrada para o CNPJ deste contrato.</p>`;
   }
 
   document.getElementById('detalhe-content').innerHTML = html;
@@ -5498,11 +5605,13 @@ function abrirDetalheDashCertidoes(titulo, status, mesRange) {
   if (!lista.length) {
     tb.innerHTML = '<div style="text-align:center;color:#aaa;padding:32px;">Nenhuma certidão encontrada.</div>';
   } else {
-    tb.innerHTML = _dashMontarTabelaCabecalho(['Empresa', 'Tipo', 'CNPJ', 'Validade', 'Status']) +
+    tb.innerHTML = _dashMontarTabelaCabecalho(['Empresa', 'Tipo', 'CNPJ', 'UF', 'Cidade', 'Validade', 'Status']) +
       lista.map(c => '<tr style="border-bottom:1px solid #f0f3f7;">' +
         '<td style="padding:8px;">' + escapeHtml(_dashEmpresaNome(c.empresaId)) + '</td>' +
         '<td style="padding:8px;">' + escapeHtml(c.tipo || '—') + '</td>' +
         '<td style="padding:8px;">' + escapeHtml(c.cnpj || '—') + '</td>' +
+        '<td style="padding:8px;">' + escapeHtml(c.uf || '—') + '</td>' +
+        '<td style="padding:8px;">' + escapeHtml(c.cidade || '—') + '</td>' +
         '<td style="padding:8px;">' + (c.dataValidade ? fmtData(c.dataValidade) : '—') + '</td>' +
         '<td style="padding:8px;">' + (statusLabel[calcStatusCertidao(c)] || '—') + '</td>' +
       '</tr>').join('') + '</tbody></table>';
@@ -6715,6 +6824,214 @@ function _downloadCSV(csvContent, filename) {
   a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
   mostrarToast('Arquivo exportado com sucesso!', 'sucesso');
+}
+
+// ─── EXPORTAÇÃO DE RELATÓRIOS (EXCEL / PDF) ─────────────────
+function _exportarNomeArquivo(titulo) {
+  const data = new Date().toISOString().slice(0, 10);
+  const base = titulo.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  return base + '_' + data;
+}
+
+function _exportarExcel(titulo, secoes) {
+  const esc = (v) => `"${String(v === null || v === undefined ? '' : v).replace(/"/g, '""')}"`;
+  const partes = [`"${titulo}"`, `"Gerado em: ${new Date().toLocaleString('pt-BR')}"`];
+  secoes.forEach(s => {
+    partes.push('');
+    partes.push(`"${s.titulo}"`);
+    if (s.colunas && s.colunas.length) partes.push(s.colunas.map(esc).join(';'));
+    (s.linhas || []).forEach(l => partes.push(l.map(esc).join(';')));
+  });
+  _downloadCSV(partes.join('\r\n'), _exportarNomeArquivo(titulo) + '.csv');
+}
+
+function _exportarPdf(titulo, secoes, imagens) {
+  const w = window.open('', '_blank');
+  if (!w) { mostrarToast('Permita pop-ups/janelas para gerar o PDF.', 'erro'); return; }
+  const esc = (v) => String(v === null || v === undefined ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const imgsHtml = (imagens || []).filter(Boolean).map(im => `<div class="chart"><h3>${esc(im.titulo)}</h3><img src="${im.src}" alt=""/></div>`).join('');
+  const secoesHtml = secoes.map(s => {
+    let cab;
+    if (s.colunas && s.colunas.length) {
+      cab = `<table><thead><tr>${s.colunas.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${(s.linhas || []).map(l => `<tr>${l.map(v => `<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+    } else {
+      cab = `<div class="kv">${(s.linhas || []).map(l => `<p><b>${esc(l[0])}:</b> ${esc(l[1])}</p>`).join('')}</div>`;
+    }
+    return `<h2>${esc(s.titulo)}</h2>${cab}`;
+  }).join('');
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(titulo)}</title><style>
+    body{font-family:'Segoe UI',Arial,sans-serif;margin:24px;color:#1a3c5e;}
+    h1{font-size:15pt;margin:0 0 2px;}
+    .meta{font-size:9pt;color:#666;margin-bottom:12px;}
+    h2{font-size:11pt;margin:16px 0 6px;border-bottom:2px solid #1a3c5e;padding-bottom:3px;}
+    table{width:100%;border-collapse:collapse;font-size:8.5pt;margin-bottom:8px;}
+    th{background:#1a3c5e;color:#fff;text-align:left;padding:5px 7px;}
+    td{padding:4px 7px;border-bottom:1px solid #e3e8ee;vertical-align:top;word-break:break-word;}
+    tr:nth-child(even) td{background:#f5f8fb;}
+    .kv{font-size:9pt;columns:2;column-gap:24px;}
+    .kv p{margin:3px 0;}
+    .chart{text-align:center;margin:10px 0;break-inside:avoid;}
+    .chart img{max-width:100%;max-height:280px;}
+    @page{size:A4 landscape;margin:12mm;}
+    @media print{body{margin:8mm;}}
+  </style></head><body>
+  <h1>${esc(titulo)}</h1>
+  <div class="meta">Gerado em ${new Date().toLocaleString('pt-BR')}</div>
+  ${imgsHtml}
+  ${secoesHtml}
+  <script>window.onload=function(){setTimeout(function(){window.print();},400);}<\/script>
+  </body></html>`;
+  w.document.write(html);
+  w.document.close();
+}
+
+function exportarCertidoes(formato) {
+  const empresaFilter = document.getElementById('filtro-ct-empresa')?.value || '';
+  const ufFilter = document.getElementById('filtro-ct-uf')?.value || '';
+  const tipoFilter = document.getElementById('filtro-ct-tipo')?.value || '';
+  const statusFilter = document.getElementById('filtro-ct-status')?.value || '';
+  let lista = getCertidoes();
+  if (empresaFilter) lista = lista.filter(c => c.empresaId === empresaFilter);
+  if (ufFilter) lista = lista.filter(c => c.uf === ufFilter);
+  if (tipoFilter) lista = lista.filter(c => c.tipo === tipoFilter);
+  if (statusFilter) lista = lista.filter(c => calcStatusCertidao(c) === statusFilter);
+  lista = sortCertidoes(lista);
+  const stLabel = { valida: 'Válida', vencendo: 'Vencendo', vencida: 'Vencida', pendente: 'Pendente' };
+  const colunas = ['Empresa', 'CNPJ', 'UF', 'Cidade', 'Tipo', 'Emissão', 'Validade', 'Status'];
+  const linhas = lista.map(c => [
+    _dashEmpresaNome(c.empresaId), c.cnpj || '—', c.uf || '—', c.cidade || '—', c.tipo || '—',
+    c.dataEmissao ? fmtData(c.dataEmissao) : '—',
+    (c.semValidade || c.dataValidade === 'Sem Validade' || !c.dataValidade) ? 'Sem Validade' : fmtData(c.dataValidade),
+    stLabel[calcStatusCertidao(c)] || '—'
+  ]);
+  const titulo = 'Relatório de Certidões';
+  const filtros = [];
+  if (empresaFilter) filtros.push(['Empresa', _dashEmpresaNome(empresaFilter)]);
+  if (ufFilter) filtros.push(['UF', ufFilter]);
+  if (tipoFilter) filtros.push(['Tipo', tipoFilter]);
+  if (statusFilter) filtros.push(['Status', stLabel[statusFilter] || statusFilter]);
+  const secoes = [];
+  if (filtros.length) secoes.push({ titulo: 'Filtros aplicados', colunas: ['Campo', 'Valor'], linhas: filtros });
+  secoes.push({ titulo: `Certidões (${lista.length})`, colunas, linhas });
+  if (formato === 'pdf') _exportarPdf(titulo, secoes); else _exportarExcel(titulo, secoes);
+}
+
+function exportarLicitacoes(formato) {
+  const empresaFilter = document.getElementById('filtro-lc-empresa')?.value || '';
+  const statusFilter = document.getElementById('filtro-lc-status')?.value || '';
+  const numeroFilter = (document.getElementById('filtro-lc-numero')?.value || '').toLowerCase();
+  let lista = getLicitacoes();
+  if (empresaFilter) lista = lista.filter(l => l.empresaId === empresaFilter);
+  if (statusFilter) lista = lista.filter(l => l.status === statusFilter);
+  if (numeroFilter) lista = lista.filter(l => (l.numeroLicitacao || '').toLowerCase().includes(numeroFilter));
+  lista = sortLicitacoes(lista);
+  const colunas = ['Nº Licitação', 'Nome', 'CNPJ', 'Empresa', 'Objeto', 'Valor (R$)', 'Índice Reajuste', 'Vigência', 'Status'];
+  const linhas = lista.map(l => {
+    const emp = getEmpresas().find(e => e.id === l.empresaId);
+    const vig = (l.dataInicio && l.dataFim) ? fmtData(l.dataInicio) + ' a ' + fmtData(l.dataFim) : '—';
+    const valor = (typeof l.valor === 'number' && !isNaN(l.valor)) ? l.valor.toFixed(2).replace('.', ',') : '—';
+    return [l.numeroLicitacao || '—', l.nomeLicitacao || '—', l.cnpj || '—', emp ? emp.nome : '—', l.objeto || '—', valor, l.indiceReajuste || '—', vig, calcStatusLicitacao(l)];
+  });
+  const titulo = 'Relatório de Contrato Licitações';
+  const filtros = [];
+  if (empresaFilter) filtros.push(['Empresa', _dashEmpresaNome(empresaFilter)]);
+  if (statusFilter) filtros.push(['Status', statusFilter === 'em_andamento' ? 'Em andamento' : 'Inativo']);
+  if (numeroFilter) filtros.push(['Nº Licitação', numeroFilter]);
+  const secoes = [];
+  if (filtros.length) secoes.push({ titulo: 'Filtros aplicados', colunas: ['Campo', 'Valor'], linhas: filtros });
+  secoes.push({ titulo: `Licitações (${lista.length})`, colunas, linhas });
+  if (formato === 'pdf') _exportarPdf(titulo, secoes); else _exportarExcel(titulo, secoes);
+}
+
+function exportarCertificadosDigitais(formato) {
+  const empresaFilter = document.getElementById('pg-cd-empresa-filtro')?.value || '';
+  const lista = getCertificadosDigitais(empresaFilter || null);
+  const empresas = getEmpresas();
+  const hoje = new Date();
+  const colunas = ['#', 'Empresa', 'CNPJ/CPF', 'Data Inclusão', 'Data Validade'];
+  const linhas = lista.map((c, i) => {
+    const emp = empresas.find(e => e.id === c.empresa_id);
+    const venc = c.data_vencimento ? new Date(c.data_vencimento + 'T00:00:00') : null;
+    const dias = venc ? Math.ceil((venc - hoje) / 86400000) : null;
+    let vencTxt = c.data_vencimento ? formatDate(c.data_vencimento) : '—';
+    if (dias !== null) { if (dias < 0) vencTxt += ' (Vencido)'; else if (dias <= 30) vencTxt += ' (Vence em ' + dias + 'd)'; }
+    return [i + 1, emp ? emp.nome : '—', c.cnpj || '—', c.data_inclusao ? formatDate(c.data_inclusao) : '—', vencTxt];
+  });
+  const titulo = 'Relatório de Certificados Digitais';
+  const secoes = [];
+  if (empresaFilter) secoes.push({ titulo: 'Filtros aplicados', colunas: ['Campo', 'Valor'], linhas: [['Empresa', _dashEmpresaNome(empresaFilter)]] });
+  secoes.push({ titulo: `Certificados Digitais (${lista.length})`, colunas, linhas });
+  if (formato === 'pdf') _exportarPdf(titulo, secoes); else _exportarExcel(titulo, secoes);
+}
+
+function exportarDashboard(formato) {
+  const empIds = getLoggedUserEmpresaIds();
+  const filtroDash = dashFiltroEmpresaIds;
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  let certidoes = getCertidoes();
+  if (empIds) certidoes = certidoes.filter(c => empIds.includes(c.empresaId));
+  if (filtroDash.length) certidoes = certidoes.filter(c => filtroDash.includes(c.empresaId));
+  let licitacoes = getLicitacoes();
+  if (empIds) licitacoes = licitacoes.filter(l => empIds.includes(l.empresaId));
+  if (filtroDash.length) licitacoes = licitacoes.filter(l => filtroDash.includes(l.empresaId));
+  let certDig = getAllCertificadosDigitais();
+  if (empIds) certDig = certDig.filter(c => empIds.includes(c.empresa_id));
+  if (filtroDash.length) certDig = certDig.filter(c => filtroDash.includes(c.empresa_id));
+
+  const certVencendo = certidoes.filter(c => calcStatusCertidao(c) === 'vencendo').length;
+  const certVencidas = certidoes.filter(c => calcStatusCertidao(c) === 'vencida').length;
+  const licTotal = licitacoes.length;
+  const licAndamento = licitacoes.filter(l => l.status === 'em_andamento' || !l.status).length;
+  const licVencidas = licitacoes.filter(l => {
+    if (l.status === 'inativo') return false;
+    if (!l.dataFim) return false;
+    return new Date(l.dataFim + 'T12:00:00') < hoje;
+  }).length;
+  const cdVencidos = certDig.filter(c => c.data_vencimento && new Date(c.data_vencimento + 'T00:00:00') < hoje).length;
+  const cdVencendo = certDig.filter(c => {
+    if (!c.data_vencimento) return false;
+    const v = new Date(c.data_vencimento + 'T00:00:00');
+    if (v < hoje) return false;
+    return Math.ceil((v - hoje) / 86400000) <= 30;
+  }).length;
+
+  const resumoLinhas = [
+    ['Cert. Próx. Vencer', certVencendo],
+    ['Cert. Vencidas', certVencidas],
+    ['Contrato Licitações Total', licTotal],
+    ['Lic. Em Andamento', licAndamento],
+    ['Lic. Vencidas', licVencidas],
+    ['Certificados Digitais', certDig.length],
+    ['CD Próx. Vencer', cdVencendo],
+    ['CD Vencidos', cdVencidos]
+  ];
+  const stLabel = { valida: 'Válida', vencendo: 'Vencendo', vencida: 'Vencida', pendente: 'Pendente' };
+  const certAlertas = certidoes.filter(c => { const s = calcStatusCertidao(c); return s === 'vencendo' || s === 'vencida'; });
+  const certLinhas = certAlertas.map(c => [
+    _dashEmpresaNome(c.empresaId), c.tipo || '—', c.cnpj || '—', c.uf || '—', c.cidade || '—',
+    c.dataValidade ? fmtData(c.dataValidade) : '—', stLabel[calcStatusCertidao(c)] || '—'
+  ]);
+  const licLinhas = licitacoes.map(l => {
+    const emp = getEmpresas().find(e => e.id === l.empresaId);
+    return [l.numeroLicitacao || '—', emp ? emp.nome : '—', l.cnpj || '—', l.objeto || '—', l.dataFim ? fmtData(l.dataFim) : '—', calcStatusLicitacao(l)];
+  });
+
+  const secoes = [
+    { titulo: 'Resumo', colunas: ['Indicador', 'Valor'], linhas: resumoLinhas },
+    { titulo: `Certidões Próx. Vencer / Vencidas (${certLinhas.length})`, colunas: ['Empresa', 'Tipo', 'CNPJ', 'UF', 'Cidade', 'Validade', 'Status'], linhas: certLinhas },
+    { titulo: `Contrato Licitações (${licLinhas.length})`, colunas: ['Nº Licitação', 'Empresa', 'CNPJ', 'Objeto', 'Data Fim', 'Status'], linhas: licLinhas }
+  ];
+  const titulo = 'Relatório do Dashboard';
+  if (formato === 'pdf') {
+    const imagens = [
+      dashCharts.certStatus ? { titulo: 'Certidões por Status', src: dashCharts.certStatus.toBase64Image() } : null,
+      dashCharts.licStatus ? { titulo: 'Licitações por Status', src: dashCharts.licStatus.toBase64Image() } : null,
+      dashCharts.certVenc ? { titulo: 'Certidões — Vencimento nos Próximos 6 Meses', src: dashCharts.certVenc.toBase64Image() } : null
+    ];
+    _exportarPdf(titulo, secoes, imagens);
+  } else {
+    _exportarExcel(titulo, secoes);
+  }
 }
 
 // ─── HISTÓRICO / AUDIT LOG ─────────────────────────────────
